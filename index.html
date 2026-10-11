@@ -1,0 +1,222 @@
+<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head><body>
+<title>Maker Papier BTC 5 min</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: summary strip (the money) on top, then the equity curve, then the live desk (market, quotes, fills), then settled markets. */
+:root {
+  --bg: #f6f7f4; --surface: #ffffff; --fg: #15191c; --fg2: #5a6168; --fg3: #8a9199; --line: #dfe3e0;
+  --accent: #2a78d6; --naive: #eb6834; --good: #1a7f37; --bad: #c0392b; --warn: #b7791f; --pill: #eef1ee;
+  --font: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #141716; --surface: #1c2020; --fg: #eceeea; --fg2: #aab1ab; --fg3: #7c847e; --line: #2c3231;
+  --accent: #3987e5; --naive: #d95926; --good: #3fb950; --bad: #f0665c; --warn: #d9a441; --pill: #262b2a; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #141716; --surface: #1c2020; --fg: #eceeea; --fg2: #aab1ab; --fg3: #7c847e; --line: #2c3231;
+  --accent: #3987e5; --naive: #d95926; --good: #3fb950; --bad: #f0665c; --warn: #d9a441; --pill: #262b2a; color-scheme: dark; }
+body { background: var(--bg); color: var(--fg); font-family: var(--font); font-size: 14px; line-height: 1.45; margin: 0; }
+.wrap { max-width: 1100px; margin: 0 auto; padding-block: 20px 40px; padding-inline: 16px; display: grid; gap: 20px; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 16px; }
+h1 { font-size: 20px; font-weight: 600; margin: 0; text-wrap: balance; }
+h2 { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--fg2); margin: 0 0 10px; }
+.sub { color: var(--fg2); font-size: 13px; }
+.pill { display: inline-flex; align-items: center; gap: 6px; background: var(--pill); border-radius: 999px; padding: 2px 10px; font-size: 12px; color: var(--fg2); font-family: var(--mono); }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--fg3); }
+.dot.live { background: var(--good); } .dot.pulled { background: var(--warn); } .dot.off { background: var(--bad); }
+.money { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; display: grid; grid-template-columns: minmax(0, 1.4fr) repeat(4, minmax(0, 1fr)); gap: 16px; }
+.money .big { grid-row: span 2; }
+.k { font-size: 12px; color: var(--fg2); text-transform: uppercase; letter-spacing: .05em; }
+.v { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 20px; font-weight: 500; margin-top: 2px; }
+.big .v { font-size: 44px; line-height: 1.05; font-weight: 500; }
+.pos { color: var(--good); } .neg { color: var(--bad); }
+.note { color: var(--fg3); font-size: 12px; margin-top: 4px; }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; min-width: 0; }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
+.chart { width: 100%; height: 240px; display: block; }
+.legend { display: flex; gap: 16px; font-size: 12px; color: var(--fg2); margin-bottom: 8px; flex-wrap: wrap; }
+.legend i { display: inline-block; width: 14px; height: 2px; vertical-align: middle; margin-right: 6px; border-radius: 1px; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+th { text-align: left; color: var(--fg2); font-weight: 500; font-size: 12px; padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+td { padding: 6px 8px; border-bottom: 1px solid var(--line); font-family: var(--mono); white-space: nowrap; }
+td.t, th.t { text-align: right; }
+.scroll { overflow-x: auto; }
+dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 0; font-size: 13px; }
+dt { color: var(--fg2); } dd { margin: 0; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.quote { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+.quote div { background: var(--pill); border-radius: 8px; padding: 8px 10px; }
+.quote .k { font-size: 11px; }
+.quote .v { font-size: 18px; }
+.empty { color: var(--fg3); font-size: 13px; padding: 8px 0; }
+.log { font-family: var(--mono); font-size: 12px; color: var(--fg2); white-space: pre-wrap; max-height: 160px; overflow: auto; margin: 0; }
+details summary { cursor: pointer; color: var(--fg2); font-size: 13px; }
+details p { color: var(--fg2); font-size: 13px; max-width: 70ch; }
+@media (max-width: 760px) { .money { grid-template-columns: 1fr 1fr; } .money .big { grid-column: span 2; grid-row: auto; } .big .v { font-size: 36px; } }
+@media (prefers-reduced-motion: no-preference) { .v { transition: color .3s; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Maker papier sur Polymarket BTC 5 min</h1>
+      <div class="sub">Simulation en direct, aucun ordre réel. Capital fictif <span id="bankroll">$1 000</span>. Fills comptés seulement quand un vrai trade passe à notre prix, après la file déjà affichée.</div>
+    </div>
+    <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center">
+      <span class="pill"><span class="dot" id="dot"></span><span id="status">connexion…</span></span>
+      <span class="pill" id="uptime">—</span>
+      <span class="pill" id="updated">—</span>
+      <button class="pill" id="reload" type="button" style="cursor:pointer;border:1px solid var(--line);color:var(--fg)">Recharger</button>
+    </div>
+  </header>
+
+  <section class="money" aria-label="Argent net">
+    <div class="big">
+      <div class="k">Argent net, stratégie esquive</div>
+      <div class="v" id="net">—</div>
+      <div class="note" id="netnote">gains à l'échéance − pertes + rebate maker (20 % des frais taker)</div>
+    </div>
+    <div><div class="k">Brut à l'échéance</div><div class="v" id="gross">—</div></div>
+    <div><div class="k">Rebate maker</div><div class="v" id="rebate">—</div></div>
+    <div><div class="k">Rendement sur capital</div><div class="v" id="roi">—</div></div>
+    <div><div class="k">Marchés réglés</div><div class="v" id="settled">—</div><div class="note" id="wl"></div></div>
+    <div><div class="k">Fills</div><div class="v" id="fills">—</div><div class="note" id="shares"></div></div>
+    <div><div class="k">Fills toxiques</div><div class="v" id="toxic">—</div><div class="note">prix contre nous de 2c+ dans les 10 s</div></div>
+    <div><div class="k">Témoin sans esquive</div><div class="v" id="naive">—</div><div class="note">même cotes, jamais retirées</div></div>
+    <div><div class="k">Avantage de l'esquive</div><div class="v" id="edge">—</div><div class="note" id="pulls"></div></div>
+  </section>
+
+  <section class="panel">
+    <h2>Courbe de l'argent net</h2>
+    <div class="legend"><span><i style="background:var(--accent)"></i>Esquive (retire ses cotes quand le BTC bouge)</span><span><i style="background:var(--naive)"></i>Témoin (ne retire jamais)</span></div>
+    <svg class="chart" id="chart" viewBox="0 0 800 240" preserveAspectRatio="none" role="img" aria-label="Courbe de PnL net des deux stratégies"></svg>
+    <div class="empty" id="chartempty" hidden>La courbe se dessine à mesure que les marchés se règlent, toutes les 5 minutes.</div>
+  </section>
+
+  <div class="grid2">
+    <section class="panel">
+      <h2>Marché en cours</h2>
+      <dl>
+        <dt>Question</dt><dd id="q">—</dd>
+        <dt>Temps restant</dt><dd id="left">—</dd>
+        <dt>Bitcoin (Coinbase)</dt><dd id="btc">—</dd>
+        <dt>Carnet Up</dt><dd id="book">—</dd>
+        <dt>Position</dt><dd id="inv">—</dd>
+        <dt>Marchés en attente de règlement</dt><dd id="pending">—</dd>
+      </dl>
+      <div class="quote">
+        <div><div class="k">Notre achat Up</div><div class="v" id="qbid">—</div></div>
+        <div><div class="k">Notre vente Up</div><div class="v" id="qask">—</div></div>
+      </div>
+    </section>
+    <section class="panel">
+      <h2>Derniers fills</h2>
+      <div class="scroll"><table><thead><tr><th>Heure</th><th>Strat.</th><th>Côté</th><th class="t">Prix</th><th class="t">Qté</th><th class="t">Mid</th><th>Toxique</th></tr></thead><tbody id="fillrows"></tbody></table></div>
+      <div class="empty" id="fillempty" hidden>Aucun fill pour l'instant. Un fill demande qu'un vrai trade dépasse la taille déjà affichée à notre prix.</div>
+    </section>
+  </div>
+
+  <section class="panel">
+    <h2>Marchés réglés (stratégie esquive)</h2>
+    <div class="scroll"><table><thead><tr><th>Fenêtre (UTC)</th><th>Résultat</th><th class="t">Fills</th><th class="t">Shares</th><th class="t">Position fin</th><th class="t">Brut $</th><th class="t">Rebate $</th><th class="t">Net $</th><th class="t">Cumul $</th></tr></thead><tbody id="mrows"></tbody></table></div>
+    <div class="empty" id="mempty" hidden>Aucun marché réglé pour l'instant.</div>
+  </section>
+
+  <section class="panel">
+    <details>
+      <summary>Comment lire ces chiffres</summary>
+      <p>Chaque fenêtre de 5 minutes est un marché. Le bot affiche un prix d'achat et un prix de vente pour le jeton Up, au meilleur prix du carnet ou un cran à l'intérieur quand il y a de la place. Il ne prend jamais le prix des autres, donc il ne paie pas de frais.</p>
+      <p>Un fill est compté quand un vrai trade passe à notre prix, pour la part qui dépasse la quantité déjà affichée à ce niveau avant nous. C'est l'hypothèse prudente : on est dernier dans la file.</p>
+      <p>À la fin des 5 minutes, les jetons Up valent $1 si le Bitcoin a fini au-dessus de son prix de départ, $0 sinon. Le brut est ce que rapportent nos positions, moins ce qu'elles ont coûté. Le rebate est l'estimation de la part des frais taker que Polymarket reverse aux makers.</p>
+      <p>La stratégie "esquive" retire ses cotes pendant 3 secondes dès que le Bitcoin bouge de plus de 3 points de base en 2 secondes. Le témoin garde les mêmes cotes en permanence. L'écart entre les deux mesure ce que coûte la sélection adverse des bots rapides.</p>
+    </details>
+    <h2 style="margin-top:14px">Journal</h2>
+    <pre class="log" id="log"></pre>
+  </section>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const usd = x => (x >= 0 ? '+' : '−') + '$' + Math.abs(x).toFixed(2);
+const cls = x => x > 0.0005 ? 'pos' : (x < -0.0005 ? 'neg' : '');
+const fmtTime = s => { const d = new Date(s * 1000); return d.toISOString().slice(11, 19); };
+const fmtWin = ts => { const d = new Date(ts * 1000), e = new Date((ts + 300) * 1000); return d.toISOString().slice(5, 16).replace('T', ' ') + '–' + e.toISOString().slice(11, 16); };
+let lastUpdated = 0;
+
+function setMoney(id, x) { const el = $(id); el.textContent = usd(x); el.className = 'v ' + cls(x); }
+
+function drawChart(curves) {
+  const svg = $('chart'); const W = 800, H = 240, L = 48, R = 12, T = 12, B = 26;
+  const series = [['dodge', 'var(--accent)'], ['naive', 'var(--naive)']];
+  const pts = series.map(([k]) => curves[k] || []);
+  const all = pts.flat();
+  if (all.length < 2) { svg.innerHTML = ''; $('chartempty').hidden = false; return; }
+  $('chartempty').hidden = true;
+  const t0 = Math.min(...all.map(p => p[0])), t1 = Math.max(...all.map(p => p[0]));
+  let y0 = Math.min(0, ...all.map(p => p[1])), y1 = Math.max(0, ...all.map(p => p[1]));
+  if (y1 - y0 < 0.5) { const m = (y0 + y1) / 2; y0 = m - 0.25; y1 = m + 0.25; }
+  const pad = (y1 - y0) * 0.08; y0 -= pad; y1 += pad;
+  const sx = t => L + (W - L - R) * ((t - t0) / Math.max(1, t1 - t0));
+  const sy = v => T + (H - T - B) * (1 - (v - y0) / (y1 - y0));
+  let out = '';
+  const ticks = 4;
+  for (let i = 0; i <= ticks; i++) {
+    const v = y0 + (y1 - y0) * i / ticks, y = sy(v);
+    out += `<line x1="${L}" x2="${W - R}" y1="${y}" y2="${y}" stroke="var(--line)" stroke-width="1"/>`;
+    out += `<text x="${L - 6}" y="${y + 4}" text-anchor="end" font-size="11" fill="var(--fg2)" font-family="var(--mono)">${v >= 0 ? '' : '−'}$${Math.abs(v).toFixed(2)}</text>`;
+  }
+  const zy = sy(0); out += `<line x1="${L}" x2="${W - R}" y1="${zy}" y2="${zy}" stroke="var(--fg3)" stroke-width="1" stroke-dasharray="3 3"/>`;
+  [t0, (t0 + t1) / 2, t1].forEach((t, i) => {
+    out += `<text x="${sx(t)}" y="${H - 8}" text-anchor="${i === 0 ? 'start' : i === 2 ? 'end' : 'middle'}" font-size="11" fill="var(--fg2)" font-family="var(--mono)">${fmtTime(t)}</text>`;
+  });
+  series.forEach(([k, color], i) => {
+    const p = pts[i]; if (!p.length) return;
+    const d = p.map((q, j) => (j ? 'L' : 'M') + sx(q[0]).toFixed(1) + ' ' + sy(q[1]).toFixed(1)).join(' ');
+    out += `<path d="${d}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>`;
+    const last = p[p.length - 1];
+    out += `<circle cx="${sx(last[0])}" cy="${sy(last[1])}" r="4" fill="${color}" stroke="var(--surface)" stroke-width="2"/>`;
+  });
+  svg.innerHTML = out;
+}
+
+function render(s) {
+  const d = s.dodge, n = s.naive;
+  $('bankroll').textContent = '$' + s.bankroll.toLocaleString('fr-FR');
+  setMoney('net', d.pnl_net); setMoney('gross', d.pnl_gross); setMoney('rebate', d.rebate);
+  $('roi').textContent = (d.return_on_bankroll_pct >= 0 ? '+' : '') + d.return_on_bankroll_pct.toFixed(2) + ' %'; $('roi').className = 'v ' + cls(d.pnl_net);
+  $('settled').textContent = d.markets_settled; $('wl').textContent = `${d.wins} gagnants · ${d.losses} perdants · ${d.markets_traded} avec fills`;
+  $('fills').textContent = d.fills; $('shares').textContent = d.shares + ' shares';
+  $('toxic').textContent = d.fills ? (100 * d.toxic_rate).toFixed(0) + ' %' : '—';
+  setMoney('naive', n.pnl_net); setMoney('edge', d.pnl_net - n.pnl_net);
+  $('pulls').textContent = s.pulls != null ? `${s.pulls} retraits · hors marché ${s.pulled_pct} % du temps` : '';
+  const pulled = (s.status || '').startsWith('pulled'); const stale = (Date.now() / 1000 - s.updated) > 30;
+  $('dot').className = 'dot ' + (stale ? 'off' : pulled ? 'pulled' : 'live');
+  $('status').textContent = stale ? 'données figées (bot arrêté ?)' : (pulled ? 'cotes retirées · ' + s.status.slice(8) : s.status === 'quoting' ? 'cotes affichées' : s.status);
+  const h = Math.floor(s.uptime_s / 3600), m = Math.floor(s.uptime_s % 3600 / 60); $('uptime').textContent = `en marche depuis ${h} h ${String(m).padStart(2, '0')}`;
+  $('updated').textContent = 'maj ' + fmtTime(s.updated) + ' UTC';
+  if (s.market) { $('q').textContent = s.market.question.replace('Bitcoin Up or Down - ', ''); $('left').textContent = s.market.secs_left + ' s'; }
+  else { $('q').textContent = 'entre deux fenêtres'; $('left').textContent = '—'; }
+  $('btc').textContent = s.btc ? '$' + s.btc.toLocaleString('en-US', { maximumFractionDigits: 1 }) : '—';
+  const b = s.book; $('book').textContent = (b.best_bid != null && b.best_ask != null) ? `${b.best_bid.toFixed(2)} (${Math.round(b.bid_size)}) / ${b.best_ask.toFixed(2)} (${Math.round(b.ask_size)})` : '—';
+  $('inv').textContent = d.inventory === 0 ? 'à plat' : (d.inventory > 0 ? `long ${d.inventory} Up` : `short ${-d.inventory} Up`);
+  $('pending').textContent = s.pending;
+  $('qbid').textContent = d.bid != null ? d.bid.toFixed(2) : '—'; $('qask').textContent = d.ask != null ? d.ask.toFixed(2) : '—';
+  drawChart(s.curve);
+  const fr = s.recent_fills || []; $('fillempty').hidden = fr.length > 0;
+  $('fillrows').innerHTML = fr.slice(0, 15).map(f => `<tr><td>${fmtTime(f.t)}</td><td>${f.strategy}</td><td class="${f.side === 'BUY' ? 'pos' : 'neg'}">${f.side === 'BUY' ? 'achat' : 'vente'}</td><td class="t">${f.price.toFixed(2)}</td><td class="t">${f.qty}</td><td class="t">${f.mid != null ? f.mid.toFixed(3) : '—'}</td><td>${f.toxic == null ? '…' : f.toxic ? 'oui' : 'non'}</td></tr>`).join('');
+  const rows = (s.markets || []).slice().reverse(); $('mempty').hidden = rows.length > 0;
+  let cum = (s.markets || []).reduce((a, r) => a + r.net, 0);
+  $('mrows').innerHTML = rows.slice(0, 40).map(r => { const c = cum; cum -= r.net; return `<tr><td>${fmtWin(r.ts)}</td><td>${r.outcome}${r.provisional ? ' (provisoire)' : ''}</td><td class="t">${r.fills}</td><td class="t">${r.shares}</td><td class="t">${r.inv_end}</td><td class="t ${cls(r.gross)}">${r.gross.toFixed(2)}</td><td class="t">${r.rebate.toFixed(3)}</td><td class="t ${cls(r.net)}">${r.net.toFixed(2)}</td><td class="t ${cls(c)}">${c.toFixed(2)}</td></tr>`; }).join('');
+  $('log').textContent = (s.log || []).join('\n');
+}
+
+async function tick() {
+  try {
+    const r = await fetch('state.json', { cache: 'no-store' });
+    if (r.ok) { const s = await r.json(); render(s); }
+    else { $('status').textContent = 'données introuvables (HTTP ' + r.status + ')'; $('dot').className = 'dot off'; }
+  } catch (e) { $('status').textContent = 'données illisibles : ' + (e && e.message ? e.message : e); $('dot').className = 'dot off'; }
+}
+$('reload').addEventListener('click', async () => { $('reload').textContent = 'Chargement…'; await tick(); $('reload').textContent = 'Recharger'; });
+tick(); setInterval(tick, 3000);
+</script>
+</body></html>
