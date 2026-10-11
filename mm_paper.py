@@ -108,7 +108,7 @@ class Bot:
         self.book = {"bids": {}, "asks": {}}  # Up token book: price -> size
         self.best_bid = self.best_ask = None
         self.market = None                 # dict(ts, cid, up, dn, question)
-        self.pending = []                  # markets waiting for settlement
+        self.pending = getattr(self, "restored_pending", [])   # markets waiting for settlement
         self.pulled_until = 0.0
         self.last_pull_reason = ""
         self._pull_t0 = None
@@ -131,6 +131,9 @@ class Bot:
                 s.market_rows = st.get("markets" if name == "dodge" else "markets_naive", [])
                 s.curve = [tuple(x) for x in st.get("curve", {}).get(name, [])] or [(time.time(), 0.0)]
                 s._restored_shares = sm.get("shares", 0.0); s._restored_toxic_n = sm.get("toxic_rated", 0)
+            self.restored_pending = st.get("pending_raw", [])
+            for name, s in self.strats.items():   # fills counter = fills of settled + pending markets
+                s.fills_n = sum(r["fills"] for r in s.market_rows) + sum(len(p["state"][name]["fills"]) for p in self.restored_pending)
             self.start = st.get("started", time.time()); self.restored_pulls = st.get("pulls", 0)
             self.restored_pulled_secs = st.get("pulled_secs", 0.0)
             print(f"restored state: dodge net {self.strats['dodge'].pnl_gross + self.strats['dodge'].rebate:+.2f} $, "
@@ -318,6 +321,7 @@ class Bot:
             "curve": {"dodge": d.curve[-2000:], "naive": n.curve[-2000:]},
             "markets": (d.market_rows[-300:]), "markets_naive": (n.market_rows[-300:]),
             "recent_fills": list(self.recent_fills), "log": list(self.log), "pending": len(self.pending),
+            "pending_raw": self.pending,
         }
         tmp = ARGS.state + ".tmp"
         with open(tmp, "w") as f: json.dump(state, f)
