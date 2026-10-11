@@ -45,6 +45,7 @@ class Strategy:
         self.market_rows = []      # settled markets
         self.pnl_gross = self.rebate = 0.0
         self.toxic = self.fills_n = 0
+        self._restored_shares = 0.0; self._restored_toxic_n = 0
         self.curve = [(time.time(), 0.0)]
 
     def reset_market(self):
@@ -101,6 +102,7 @@ class Strategy:
 class Bot:
     def __init__(self):
         self.strats = {"dodge": Strategy("dodge", True), "naive": Strategy("naive", False)}
+        self.restore()
         self.btc = deque(maxlen=600)       # (t, price)
         self.btc_px = None
         self.book = {"bids": {}, "asks": {}}  # Up token book: price -> size
@@ -109,15 +111,32 @@ class Bot:
         self.pending = []                  # markets waiting for settlement
         self.pulled_until = 0.0
         self.last_pull_reason = ""
-        self.n_pulls = 0
-        self.pulled_secs = 0.0
         self._pull_t0 = None
         self.status = "starting"
-        self.start = time.time()
+        self.start = getattr(self, "start", None) or time.time()
+        self.n_pulls = getattr(self, "restored_pulls", 0); self.pulled_secs = getattr(self, "restored_pulled_secs", 0.0)
         self.events = 0
         self.recent_fills = deque(maxlen=40)
         self.log = deque(maxlen=30)
         self.mid_hist = deque(maxlen=400)  # (t, mid) for toxicity marking
+
+    def restore(self):
+        """Resume totals from an existing state file (same path) so a restart keeps the history."""
+        if not os.path.exists(ARGS.state): return
+        try:
+            st = json.load(open(ARGS.state))
+            for name, s in self.strats.items():
+                sm = st.get(name, {}); s.pnl_gross = sm.get("pnl_gross", 0.0); s.rebate = sm.get("rebate", 0.0)
+                s.fills_n = sm.get("fills", 0); s.toxic = sm.get("toxic_fills", 0)
+                s.market_rows = st.get("markets" if name == "dodge" else "markets_naive", [])
+                s.curve = [tuple(x) for x in st.get("curve", {}).get(name, [])] or [(time.time(), 0.0)]
+                s._restored_shares = sm.get("shares", 0.0); s._restored_toxic_n = sm.get("toxic_rated", 0)
+            self.start = st.get("started", time.time()); self.restored_pulls = st.get("pulls", 0)
+            self.restored_pulled_secs = st.get("pulled_secs", 0.0)
+            print(f"restored state: dodge net {self.strats['dodge'].pnl_gross + self.strats['dodge'].rebate:+.2f} $, "
+                  f"{len(self.strats['dodge'].market_rows)} markets", flush=True)
+        except Exception as e:
+            print(f"could not restore state: {e}", flush=True)
 
     # ---------- helpers ----------
     def say(self, msg):
@@ -277,8 +296,9 @@ class Bot:
         def summary(s):
             net = s.pnl_gross + s.rebate
             return {"pnl_gross": round(s.pnl_gross, 3), "rebate": round(s.rebate, 3), "pnl_net": round(net, 3),
-                    "fills": s.fills_n, "shares": round(sum(f["qty"] for f in s.fills), 1),
-                    "toxic_fills": s.toxic, "toxic_rate": round(s.toxic / max(1, sum(1 for f in s.fills if f["toxic"] is not None)), 3),
+                    "fills": s.fills_n, "shares": round(s._restored_shares + sum(f["qty"] for f in s.fills), 1),
+                    "toxic_fills": s.toxic, "toxic_rated": s._restored_toxic_n + sum(1 for f in s.fills if f["toxic"] is not None),
+                    "toxic_rate": round(s.toxic / max(1, s._restored_toxic_n + sum(1 for f in s.fills if f["toxic"] is not None)), 3),
                     "markets_traded": sum(1 for r in s.market_rows if r["fills"]), "markets_settled": len(s.market_rows),
                     "wins": sum(1 for r in s.market_rows if r["net"] > 0), "losses": sum(1 for r in s.market_rows if r["net"] < 0),
                     "inventory": round(s.inv, 1), "bid": s.bid, "ask": s.ask,
@@ -288,7 +308,7 @@ class Bot:
             "bankroll": ARGS.bankroll, "params": {"size": ARGS.size, "max_inv": ARGS.max_inv, "pull_move_bp": ARGS.pull_move * 1e4, "pull_ticks": ARGS.pull_ticks, "no_quote_last": ARGS.no_quote_last,
                                                    "pull_secs": ARGS.pull_secs, "fee_rate": FEE_RATE, "rebate_share": REBATE_SHARE},
             "status": self.status, "events": self.events, "btc": self.btc_px, "pulls": self.n_pulls,
-            "pulled_pct": round(100 * self.pulled_secs / max(1, time.time() - self.start), 1),
+            "pulled_pct": round(100 * self.pulled_secs / max(1, time.time() - self.start), 1), "pulled_secs": self.pulled_secs,
             "market": {"ts": self.market["ts"], "question": self.market["question"],
                        "secs_left": max(0, int(self.market["ts"] + 300 - time.time()))} if self.market else None,
             "book": {"best_bid": self.best_bid, "best_ask": self.best_ask, "mid": self.mid(),
