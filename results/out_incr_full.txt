@@ -1,0 +1,14 @@
+markets 16397, sampled trades 475675; train markets 8198, test 8199
+market alone: test log-loss raw 0.3960, recalibrated 0.3958  (a=1.051)
+L= 0s  model alone recal 0.4213 | market+model: test log-loss 0.3947  coef market a=0.886 model b=0.128
+       theta=0.03:   8769 signals in 2753 mkts, pnl/share all +0.0478, first-per-mkt +0.0903 (se 0.0082), with 1c slip +0.0803
+       theta=0.05:   2027 signals in  930 mkts, pnl/share all +0.1048, first-per-mkt +0.1459 (se 0.0140), with 1c slip +0.1359
+       theta=0.10:    367 signals in  236 mkts, pnl/share all +0.1614, first-per-mkt +0.2138 (se 0.0277), with 1c slip +0.2038
+L= 5s  model alone recal 0.4292 | market+model: test log-loss 0.3957  coef market a=1.005 model b=0.037
+       theta=0.03:    474 signals in  263 mkts, pnl/share all +0.0096, first-per-mkt -0.0036 (se 0.0272), with 1c slip -0.0136
+       theta=0.05:     96 signals in   66 mkts, pnl/share all -0.0380, first-per-mkt +0.0103 (se 0.0577), with 1c slip +0.0003
+       theta=0.10:      0 signals in    0 mkts, pnl/share all +nan, first-per-mkt +nan (se nan), with 1c slip +nan
+L=10s  model alone recal 0.4384 | market+model: test log-loss 0.3957  coef market a=1.018 model b=0.028
+       theta=0.03:    386 signals in  274 mkts, pnl/share all -0.0459, first-per-mkt -0.0190 (se 0.0277), with 1c slip -0.0290
+       theta=0.05:     44 signals in   39 mkts, pnl/share all -0.0074, first-per-mkt -0.0080 (se 0.0759), with 1c slip -0.0180
+       theta=0.10:      0 signals in    0 mkts, pnl/share all +nan, first-per-mkt +nan (se nan), with 1c slip +nan
