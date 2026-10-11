@@ -1,0 +1,47 @@
+# Runs the paper market maker on a GitHub-hosted runner, 6 hours at a time, and publishes
+# state.json + the dashboard to the gh-pages branch every 5 minutes (served by GitHub Pages).
+name: paper-bot
+on:
+  schedule:
+    - cron: "0 */6 * * *"
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: paper-bot
+  cancel-in-progress: true
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 358
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          path: live
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -q requests websockets
+      - name: Run the bot and publish its state every 5 minutes
+        run: |
+          set +e
+          cp live/state.json state.json 2>/dev/null || true
+          python mm_paper.py --state state.json > bot.log 2>&1 &
+          BOT=$!
+          git -C live config user.name "paper-bot"
+          git -C live config user.email "paper-bot@users.noreply.github.com"
+          publish() {
+            cp state.json live/state.json
+            { echo '<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head><body>'; cat dashboard.html; echo '</body></html>'; } > live/index.html
+            (cd live && git add -A && git commit -qm "state $(date -u +%FT%TZ)" && (git pull -q --rebase || true) && git push -q) || true
+          }
+          END=$(( $(date +%s) + 350*60 ))
+          while [ "$(date +%s)" -lt "$END" ] && kill -0 "$BOT" 2>/dev/null; do
+            sleep 300
+            publish
+          done
+          kill "$BOT" 2>/dev/null; sleep 2
+          publish
+          echo "--- bot log tail"; tail -30 bot.log
