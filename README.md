@@ -6,6 +6,16 @@ fill seulement quand un vrai trade passe à notre prix pour la part qui dépasse
 (on se suppose dernier dans la file). Positions gardées jusqu'à l'échéance et réglées avec le résultat
 officiel (Gamma API). Une stratégie témoin identique mais qui ne retire jamais ses cotes tourne en parallèle.
 
+## Suivi en direct
+
+Le bot tourne sur GitHub Actions (workflow `paper-bot.yml`, tranches de 6 h, relancé par cron) et publie son état
+toutes les 5 minutes sur la branche `gh-pages`, servie par GitHub Pages :
+
+**https://anthonynadjari.github.io/PolymarketArb/**
+
+La page se rafraîchit seule. L'heure de la dernière donnée est affichée en haut à droite. Pour relancer le bot à la
+main : onglet Actions du repo, workflow paper-bot, "Run workflow".
+
 ## Lancer chez toi
 
 ```bash
