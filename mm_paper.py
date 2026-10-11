@@ -27,7 +27,9 @@ ap.add_argument("--port", type=int, default=8787)
 ap.add_argument("--state", default="state.json")
 ap.add_argument("--size", type=float, default=50, help="shares per quote side")
 ap.add_argument("--max-inv", type=float, default=200, help="max net inventory (shares) per market")
-ap.add_argument("--pull-move", type=float, default=0.0003, help="pull quotes if |BTC move over 2s| exceeds this fraction")
+ap.add_argument("--pull-move", type=float, default=0.0001, help="pull quotes if |BTC move over 2s| exceeds this fraction (1 bp)")
+ap.add_argument("--pull-ticks", type=int, default=2, help="pull quotes if the Polymarket mid moved this many ticks in 2s")
+ap.add_argument("--no-quote-last", type=float, default=10, help="stop quoting in the last N seconds of the window")
 ap.add_argument("--pull-secs", type=float, default=3.0, help="stay out this many seconds after a fast move")
 ap.add_argument("--bankroll", type=float, default=1000.0)
 ARGS = ap.parse_args()
@@ -61,8 +63,8 @@ class Strategy:
         bid = round(best_bid + TICK, 2) if spread > TICK + 1e-9 else best_bid   # improve when there is room
         ask = round(best_ask - TICK, 2) if spread > TICK + 1e-9 else best_ask
         if bid >= ask: bid, ask = best_bid, best_ask
-        self.bid = bid if self.inv < ARGS.max_inv and bid >= 0.02 else None
-        self.ask = ask if self.inv > -ARGS.max_inv and ask <= 0.98 else None
+        self.bid = bid if self.inv < ARGS.max_inv and 0.05 <= bid <= 0.95 else None
+        self.ask = ask if self.inv > -ARGS.max_inv and 0.05 <= ask <= 0.95 else None
 
     def on_trade(self, side, price, size, level_size_before, mid_now, t):
         """side = taker side in Up terms ('SELL' hits bids, 'BUY' lifts asks)."""
@@ -107,6 +109,9 @@ class Bot:
         self.pending = []                  # markets waiting for settlement
         self.pulled_until = 0.0
         self.last_pull_reason = ""
+        self.n_pulls = 0
+        self.pulled_secs = 0.0
+        self._pull_t0 = None
         self.status = "starting"
         self.start = time.time()
         self.events = 0
@@ -171,12 +176,28 @@ class Bot:
         self.best_bid = max(self.book["bids"]) if self.book["bids"] else None
         self.best_ask = min(self.book["asks"]) if self.book["asks"] else None
         m = self.mid()
-        if m is not None: self.mid_hist.append((time.time(), m))
+        if m is not None:
+            now = time.time(); self.mid_hist.append((now, m))
+            old = [x for t, x in self.mid_hist if now - t >= 2.0]
+            if old and abs(m - old[-1]) >= ARGS.pull_ticks * TICK - 1e-9:
+                self.pull(f"book moved {(m-old[-1])*100:+.0f}c in 2s")
 
     # ---------- core ----------
+    def pull(self, reason):
+        now = time.time()
+        if now >= self.pulled_until:
+            self.n_pulls += 1; self._pull_t0 = now
+        self.pulled_until = now + ARGS.pull_secs
+        self.last_pull_reason = reason
+
     def requote(self):
         now = time.time()
+        if self.market and now > self.market["ts"] + 300 - ARGS.no_quote_last:
+            for s in self.strats.values(): s.bid = s.ask = None
+            self.status = "last seconds: not quoting"; return
         pulled = now < self.pulled_until
+        if not pulled and self._pull_t0 is not None:
+            self.pulled_secs += now - self._pull_t0; self._pull_t0 = None
         for s in self.strats.values(): s.quote(self.best_bid, self.best_ask, pulled)
         self.status = ("pulled: " + self.last_pull_reason) if pulled else ("quoting" if self.market else "no market")
 
@@ -184,8 +205,7 @@ class Bot:
         self.btc.append((time.time(), px)); self.btc_px = px
         mv = self.btc_move(2.0)
         if abs(mv) > ARGS.pull_move:
-            self.pulled_until = time.time() + ARGS.pull_secs
-            self.last_pull_reason = f"BTC {mv*1e4:+.1f} bp in 2s"
+            self.pull(f"BTC {mv*1e4:+.1f} bp in 2s")
         self.requote()
 
     def on_trade(self, asset, side, price, size, t_ms):
@@ -257,9 +277,10 @@ class Bot:
                     "return_on_bankroll_pct": round(100 * net / ARGS.bankroll, 3)}
         state = {
             "updated": time.time(), "started": self.start, "uptime_s": round(time.time() - self.start),
-            "bankroll": ARGS.bankroll, "params": {"size": ARGS.size, "max_inv": ARGS.max_inv, "pull_move_bp": ARGS.pull_move * 1e4,
+            "bankroll": ARGS.bankroll, "params": {"size": ARGS.size, "max_inv": ARGS.max_inv, "pull_move_bp": ARGS.pull_move * 1e4, "pull_ticks": ARGS.pull_ticks, "no_quote_last": ARGS.no_quote_last,
                                                    "pull_secs": ARGS.pull_secs, "fee_rate": FEE_RATE, "rebate_share": REBATE_SHARE},
-            "status": self.status, "events": self.events, "btc": self.btc_px,
+            "status": self.status, "events": self.events, "btc": self.btc_px, "pulls": self.n_pulls,
+            "pulled_pct": round(100 * self.pulled_secs / max(1, time.time() - self.start), 1),
             "market": {"ts": self.market["ts"], "question": self.market["question"],
                        "secs_left": max(0, int(self.market["ts"] + 300 - time.time()))} if self.market else None,
             "book": {"best_bid": self.best_bid, "best_ask": self.best_ask, "mid": self.mid(),
@@ -340,7 +361,12 @@ def serve(port):
         def end_headers(self):
             self.send_header("Cache-Control", "no-store"); super().end_headers()
         def do_GET(self):
-            if self.path in ("/", ""): self.path = "/dashboard.html"
+            if self.path in ("/", "", "/dashboard.html"):
+                body = open(os.path.join(here, "dashboard.html"), "rb").read()
+                page = (b'<!doctype html><html lang="fr"><head><meta charset="utf-8">'
+                        b'<meta name="viewport" content="width=device-width, initial-scale=1"></head><body>' + body + b'</body></html>')
+                self.send_response(200); self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Content-Length", str(len(page))); self.end_headers(); self.wfile.write(page); return
             return super().do_GET()
     ThreadingHTTPServer(("0.0.0.0", port), H).serve_forever()
 

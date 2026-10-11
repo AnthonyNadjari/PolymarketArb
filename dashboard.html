@@ -81,7 +81,7 @@ details p { color: var(--fg2); font-size: 13px; max-width: 70ch; }
     <div><div class="k">Fills</div><div class="v" id="fills">—</div><div class="note" id="shares"></div></div>
     <div><div class="k">Fills toxiques</div><div class="v" id="toxic">—</div><div class="note">prix contre nous de 2c+ dans les 10 s</div></div>
     <div><div class="k">Témoin sans esquive</div><div class="v" id="naive">—</div><div class="note">même cotes, jamais retirées</div></div>
-    <div><div class="k">Avantage de l'esquive</div><div class="v" id="edge">—</div></div>
+    <div><div class="k">Avantage de l'esquive</div><div class="v" id="edge">—</div><div class="note" id="pulls"></div></div>
   </section>
 
   <section class="panel">
@@ -186,6 +186,7 @@ function render(s) {
   $('fills').textContent = d.fills; $('shares').textContent = d.shares + ' shares';
   $('toxic').textContent = d.fills ? (100 * d.toxic_rate).toFixed(0) + ' %' : '—';
   setMoney('naive', n.pnl_net); setMoney('edge', d.pnl_net - n.pnl_net);
+  $('pulls').textContent = s.pulls != null ? `${s.pulls} retraits · hors marché ${s.pulled_pct} % du temps` : '';
   const pulled = (s.status || '').startsWith('pulled'); const stale = (Date.now() / 1000 - s.updated) > 30;
   $('dot').className = 'dot ' + (stale ? 'off' : pulled ? 'pulled' : 'live');
   $('status').textContent = stale ? 'données figées (bot arrêté ?)' : (pulled ? 'cotes retirées · ' + s.status.slice(8) : s.status === 'quoting' ? 'cotes affichées' : s.status);
@@ -211,7 +212,8 @@ async function tick() {
   try {
     const r = await fetch('state.json', { cache: 'no-store' });
     if (r.ok) { const s = await r.json(); render(s); }
-  } catch (e) { $('status').textContent = 'state.json introuvable'; $('dot').className = 'dot off'; }
+    else { $('status').textContent = 'données introuvables (HTTP ' + r.status + ')'; $('dot').className = 'dot off'; }
+  } catch (e) { $('status').textContent = 'données illisibles : ' + (e && e.message ? e.message : e); $('dot').className = 'dot off'; }
 }
 $('reload').addEventListener('click', async () => { $('reload').textContent = 'Chargement…'; await tick(); $('reload').textContent = 'Recharger'; });
 tick(); setInterval(tick, 3000);

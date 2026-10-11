@@ -18,8 +18,10 @@ Options utiles :
 ```
 --size 50        shares par cote (défaut 50)
 --max-inv 200    position nette max par marché
---pull-move 0.0003   retire les cotes si |mouvement BTC sur 2 s| > 3 bp
+--pull-move 0.0001   retire les cotes si |mouvement BTC sur 2 s| > 1 bp
 --pull-secs 3    durée du retrait
+--pull-ticks 2   retire aussi si le mid Polymarket bouge de 2 ticks en 2 s
+--no-quote-last 10   pas de cotes dans les 10 dernières secondes (cotes limitées à 5c-95c)
 --bankroll 1000  capital fictif pour le % de rendement
 --state state.json   fichier d'état (lu par le dashboard toutes les 3 s)
 ```
