@@ -128,15 +128,23 @@ class Bot:
         return round((self.best_bid + self.best_ask) / 2, 4)
 
     def fetch_market(self, ts, tries=20):
-        for _ in range(tries):
+        last_err = None
+        for i in range(tries):
             try:
-                ev = requests.get(GAMMA, params={"slug": f"btc-updown-5m-{ts}"}, timeout=10).json()
-                if ev:
-                    m = ev[0]["markets"][0]; toks = json.loads(m["clobTokenIds"])
-                    return {"ts": ts, "cid": m["conditionId"], "up": toks[0], "dn": toks[1], "question": m["question"]}
-            except Exception:
-                pass
+                r = requests.get(GAMMA, params={"slug": f"btc-updown-5m-{ts}"}, timeout=10)
+                if r.status_code != 200:
+                    last_err = f"HTTP {r.status_code}: {r.text[:120]}"
+                else:
+                    ev = r.json()
+                    if ev:
+                        m = ev[0]["markets"][0]; toks = json.loads(m["clobTokenIds"])
+                        return {"ts": ts, "cid": m["conditionId"], "up": toks[0], "dn": toks[1], "question": m["question"]}
+                    last_err = f"empty answer for slug btc-updown-5m-{ts} (clock off? now={int(time.time())})"
+            except Exception as e:
+                last_err = f"{type(e).__name__}: {e}"
+            if i == 0 and last_err: self.say(f"gamma api problem: {last_err}")
             time.sleep(3)
+        self.say(f"gamma api still failing: {last_err}")
         return None
 
     def fetch_outcome(self, ts):
@@ -305,7 +313,7 @@ class Bot:
                         d = json.loads(msg)
                         if d.get("type") == "ticker" and "price" in d: self.on_btc(float(d["price"]))
             except Exception as e:
-                self.say(f"coinbase ws error: {e}"); await asyncio.sleep(2)
+                self.say(f"coinbase ws error: {type(e).__name__}: {e}"); await asyncio.sleep(2)
 
     async def polymarket(self):
         while True:
