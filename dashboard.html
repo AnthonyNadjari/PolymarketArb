@@ -160,12 +160,14 @@ details p { color: var(--fg2); font-size: 13px; max-width: 70ch; }
     </header>
 
     <section class="panel">
-      <h2>Deux portefeuilles côte à côte</h2>
-      <div class="scroll"><table><thead><tr><th>Portefeuille</th><th class="t">Net $</th><th class="t">Récompenses $</th><th class="t">Positions $</th><th class="t">Rythme $/j</th><th class="t">Fills</th><th class="t">Depuis</th></tr></thead><tbody id="r-compare"></tbody></table></div>
-      <div class="note">Primes max : les marchés les mieux payés, quels qu'ils soient. Marchés lents : on exclut tout ce qui se lit en direct ailleurs (vues, météo, posts, matchs, prix) et on ne garde que les marchés à plus de 3 jours.</div>
+      <h2>Portefeuilles côte à côte</h2>
+      <div class="scroll"><table><thead><tr><th>Portefeuille</th><th class="t">Net $</th><th class="t">Récompenses $</th><th class="t">Positions $</th><th class="t">Rythme $/j</th><th class="t">Fills</th><th class="t">Pire cas $</th><th class="t">Depuis</th></tr></thead><tbody id="r-compare"></tbody></table></div>
+      <div class="note">Primes max : les marchés les mieux payés, quels qu'ils soient. Marchés lents : on exclut tout ce qui se lit en direct ailleurs (vues, météo, posts, matchs, prix) et on ne garde que les marchés à plus de 3 jours.<br>Version pessimiste : même portefeuille, mais on suppose le pire partout. On passe en tête de file, donc on est rempli plus souvent. Si le prix saute par-dessus notre ordre entre deux minutes, on est rempli en entier au mauvais prix. Un concurrent arrive tout de suite et prend la moitié de la prime. Le stock est valorisé au prix auquel on pourrait le revendre, pas au milieu.<br>Pire cas : le net si tous les marchés où l'on a du stock se réglaient contre nous maintenant.</div>
       <div class="tabs" role="tablist" aria-label="Portefeuille affiché" style="margin-top:12px">
         <button type="button" role="tab" id="pfbtn-max" aria-selected="true">Primes max</button>
         <button type="button" role="tab" id="pfbtn-slow" aria-selected="false">Marchés lents</button>
+        <button type="button" role="tab" id="pfbtn-maxp" aria-selected="false">Primes max, pessimiste</button>
+        <button type="button" role="tab" id="pfbtn-slowp" aria-selected="false">Marchés lents, pessimiste</button>
       </div>
     </section>
 
@@ -301,25 +303,28 @@ function showTab(name) {
   if (!['btc', 'rewards'].includes(t)) { try { t = localStorage.getItem('pm-tab') || 'rewards'; } catch (e) { t = 'rewards'; } }
   showTab(['btc', 'rewards'].includes(t) ? t : 'rewards');
 })();
-const PF = { max: { file: 'rewards_state.json', name: 'Primes max' }, slow: { file: 'rewards_slow_state.json', name: 'Marchés lents' } };
+const PF = { max: { file: 'rewards_state.json', name: 'Primes max' }, slow: { file: 'rewards_slow_state.json', name: 'Marchés lents' },
+  maxp: { file: 'rewards_max_pess_state.json', name: 'Primes max, pessimiste' }, slowp: { file: 'rewards_slow_pess_state.json', name: 'Marchés lents, pessimiste' } };
+const PFK = Object.keys(PF);
 let pfSel = 'max'; try { pfSel = localStorage.getItem('pm-pf') || 'max'; } catch (e) {}
 const pfData = {};
 function showPf(k) {
-  pfSel = k; ['max', 'slow'].forEach(n => $('pfbtn-' + n).setAttribute('aria-selected', n === k ? 'true' : 'false'));
+  if (!PF[k]) k = 'max';
+  pfSel = k; PFK.forEach(n => $('pfbtn-' + n).setAttribute('aria-selected', n === k ? 'true' : 'false'));
   try { localStorage.setItem('pm-pf', k); } catch (e) {}
   if (pfData[k]) renderRewards(pfData[k]);
   else { $('r-status').textContent = 'pas encore de données pour ce portefeuille'; $('r-dot').className = 'dot off'; }
 }
-['max', 'slow'].forEach(n => $('pfbtn-' + n).addEventListener('click', () => showPf(n)));
+PFK.forEach(n => $('pfbtn-' + n).addEventListener('click', () => showPf(n)));
 function renderCompare() {
-  $('r-compare').innerHTML = ['max', 'slow'].map(k => {
-    const s = pfData[k]; if (!s) return `<tr><td>${PF[k].name}</td><td class="t" colspan="6">démarrage…</td></tr>`;
+  $('r-compare').innerHTML = PFK.map(k => {
+    const s = pfData[k]; if (!s) return `<tr><td>${PF[k].name}</td><td class="t" colspan="7">démarrage…</td></tr>`;
     const t = s.totals, h = Math.floor((s.updated - s.started) / 3600), m = Math.floor((s.updated - s.started) % 3600 / 60);
-    return `<tr><td>${PF[k].name}</td><td class="t ${cls(t.net)}">${t.net.toFixed(2)}</td><td class="t">${t.rewards.toFixed(2)}</td><td class="t ${cls(t.trading)}">${t.trading.toFixed(2)}</td><td class="t">${Math.round(t.exp_usd_day)}</td><td class="t">${t.fills}</td><td class="t">${h} h ${String(m).padStart(2, '0')}</td></tr>`;
+    return `<tr><td>${PF[k].name}</td><td class="t ${cls(t.net)}">${t.net.toFixed(2)}</td><td class="t">${t.rewards.toFixed(2)}</td><td class="t ${cls(t.trading)}">${t.trading.toFixed(2)}</td><td class="t">${Math.round(t.exp_usd_day)}</td><td class="t">${t.fills}</td><td class="t ${t.worst_case != null ? cls(t.worst_case) : ''}">${t.worst_case != null ? t.worst_case.toFixed(2) : '—'}</td><td class="t">${h} h ${String(m).padStart(2, '0')}</td></tr>`;
   }).join('');
 }
 async function tickRewards() {
-  await Promise.all(['max', 'slow'].map(async k => {
+  await Promise.all(PFK.map(async k => {
     try { const r = await fetch(PF[k].file, { cache: 'no-store' }); if (r.ok) pfData[k] = await r.json(); } catch (e) {}
   }));
   renderCompare(); showPf(pfSel);

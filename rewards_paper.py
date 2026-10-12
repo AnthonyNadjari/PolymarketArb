@@ -29,6 +29,9 @@ ap.add_argument("--duration-min", type=float, default=0, help="stop after N minu
 ap.add_argument("--profile", choices=["max", "slow"], default="max",
                 help="max: best rewards anywhere; slow: skip markets whose outcome can be watched live")
 ap.add_argument("--min-days-left", type=float, default=0, help="slow profile: only markets ending at least this far out")
+ap.add_argument("--pessimistic", action="store_true",
+                help="worst-case accounting: first in queue, run over when the book jumps through our price, "
+                     "a competitor matches us at once (share capped at 50%%), stock valued at the price we could sell at")
 ARGS = ap.parse_args()
 S = requests.Session()
 S.headers["User-Agent"] = "pm-rewards-paper/0.1"
@@ -156,7 +159,15 @@ class Pos:
         if self.resolved is not None:
             return self.n_yes * self.resolved + self.n_no * (1 - self.resolved) + self.cash
         if self.mid is None: return self.cash + self.n_yes * 0.5 + self.n_no * 0.5
+        bb, ba = getattr(self, "bb", None), getattr(self, "ba", None)
+        if ARGS.pessimistic and bb is not None and ba is not None:
+            return self.n_yes * bb + self.n_no * (1 - ba) + self.cash     # what we would get by selling now
         return self.n_yes * self.mid + self.n_no * (1 - self.mid) + self.cash
+
+    def worst(self):
+        """Value if the market resolved against our net stock right now."""
+        if self.resolved is not None: return self.value()
+        return self.cash + min(self.n_yes, self.n_no) + 0.0
 
     def inv(self): return self.n_yes - self.n_no
 
@@ -272,6 +283,15 @@ class Bot:
             mid = adjusted_mid(bids, asks, p.min_size)
             if mid is None: p.bid = p.ask = None; continue
             p.mid = round(mid, 4)
+            p.bb = bids[0][0] if bids else None; p.ba = asks[0][0] if asks else None
+            if ARGS.pessimistic and (p.bid is not None or p.ask is not None):
+                # the book jumped through our resting price since the last sample: assume we were run over
+                if p.bid is not None and p.ba is not None and p.ba <= p.bid and p.inv() < p.size:
+                    q = p.size - max(0.0, p.inv()); p.n_yes += q; p.cash -= q * p.bid; p.fills += 1
+                    self.say(f"run over BUY YES {q:.0f} @ {p.bid:.3f} | {p.q[:50]}")
+                if p.ask is not None and p.bb is not None and p.bb >= p.ask and -p.inv() < p.size:
+                    q = p.size - max(0.0, -p.inv()); p.n_no += q; p.cash -= q * (1 - p.ask); p.fills += 1
+                    self.say(f"run over SELL YES {q:.0f} @ {p.ask:.3f} | {p.q[:50]}")
             if not p.active or (p.end and time.time() > p.end - 600):
                 p.bid = p.ask = None; p.share = 0.0
                 p.qhist = (getattr(p, "qhist", []) + [[time.time(), None, None, 0, 0]])[-15:]; continue
@@ -282,8 +302,8 @@ class Bot:
             p.size = round(ARGS.capital / max(0.05, bid + (1 - ask)))
             p.bid = round(bid, 4) if p.inv() < p.size and bid > 0 else None
             p.ask = round(ask, 4) if -p.inv() < p.size and ask < 1 else None
-            p.bid_ahead = sum(s for x, s in bids if abs(x - (p.bid or -1)) < 1e-9)
-            p.ask_ahead = sum(s for x, s in asks if abs(x - (p.ask or -1)) < 1e-9)
+            p.bid_ahead = 0.0 if ARGS.pessimistic else sum(s for x, s in bids if abs(x - (p.bid or -1)) < 1e-9)
+            p.ask_ahead = 0.0 if ARGS.pessimistic else sum(s for x, s in asks if abs(x - (p.ask or -1)) < 1e-9)
             if not hasattr(p, "qhist"): p.qhist = []
             p.qhist = (p.qhist + [[time.time(), p.bid, p.ask, p.bid_ahead, p.ask_ahead]])[-15:]
             q1 = sum(score((mid - x) * 100, p.v) * s for x, s in bids if s >= p.min_size)
@@ -292,6 +312,7 @@ class Bot:
             m1 = score((mid - p.bid) * 100, p.v) * p.size if p.bid is not None else 0.0
             m2 = score((p.ask - mid) * 100, p.v) * p.size if p.ask is not None else 0.0
             mine = q_min(m1, m2, mid) if p.size >= p.min_size else 0.0
+            if ARGS.pessimistic: others = max(others, mine)       # someone shows up and matches our score
             p.share = mine / (mine + others) if mine > 0 else 0.0
             p.rewards += p.rate * p.share * dt_days; p.samples += 1; p.share_sum += p.share
         self.samples += 1
@@ -313,6 +334,7 @@ class Bot:
         ps = list(self.pos.values())
         rewards = sum(p.rewards for p in ps); trading = sum(p.value() for p in ps)
         net = rewards + trading
+        worst = rewards + sum(p.worst() for p in ps)
         self.curve.append([round(time.time()), round(net, 2), round(rewards, 2), round(trading, 2)])
         self.curve = self.curve[-3000:]
         active = [p for p in ps if p.active and p.resolved is None]
@@ -325,11 +347,12 @@ class Bot:
                          "fills": p.fills, "end": p.end, "tags": p.tags})
         st = {"updated": time.time(), "started": self.t0, "samples": self.samples,
               "params": {"k": ARGS.k, "capital": ARGS.capital, "min_rate": ARGS.min_rate, "placement": ARGS.placement,
-                         "min_hours_left": ARGS.min_hours_left, "profile": ARGS.profile, "min_days_left": ARGS.min_days_left},
+                         "min_hours_left": ARGS.min_hours_left, "profile": ARGS.profile, "min_days_left": ARGS.min_days_left,
+                         "pessimistic": ARGS.pessimistic},
               "totals": {"rewards": round(rewards, 2), "trading": round(trading, 2), "net": round(net, 2),
                          "quoting": len(active), "capital_quoting": round(len(active) * ARGS.capital),
                          "fills": sum(p.fills for p in ps), "markets_total": len(ps),
-                         "exp_usd_day": round(sum(p.rate * p.share for p in active), 2)},
+                         "exp_usd_day": round(sum(p.rate * p.share for p in active), 2), "worst_case": round(worst, 2)},
               "curve": self.curve, "rows": rows[:200], "candidates": self.candidates, "log": self.log,
               "positions": {k: p.__dict__ for k, p in self.pos.items()}}
         tmp = ARGS.state + ".tmp"

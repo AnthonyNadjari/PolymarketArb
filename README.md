@@ -28,6 +28,11 @@ Workflow : `rewards-bot.yml`, publie `rewards_state.json` toutes les 5 minutes.
 Un second portefeuille "marchés lents" (`--profile slow --min-days-left 3`) tourne en parallèle : il exclut les marchés
 dont l'issue se lit en direct ailleurs (vues, météo, posts, matchs, prix) et publie `rewards_slow_state.json`.
 
+Chaque portefeuille a un jumeau `--pessimistic` (`rewards_max_pess_state.json`, `rewards_slow_pess_state.json`) qui
+suppose le pire : tête de file, rempli en entier quand le carnet saute par-dessus notre prix entre deux minutes,
+un concurrent qui égale notre score tout de suite (part plafonnée à 50 %), stock valorisé au prix de revente.
+Tous publient aussi un "pire cas" : le net si chaque marché où l'on a du stock se réglait contre nous.
+
 ## Lancer chez toi
 
 ```bash
