@@ -72,6 +72,7 @@ details p { color: var(--fg2); font-size: 13px; max-width: 70ch; }
   <header>
     <div>
       <h1>Maker papier sur Polymarket BTC 5 min</h1>
+      <div class="note" style="color:var(--fg);font-size:13px;margin:4px 0 6px">Test arrêté le 12 octobre à 09:15 UTC. Résultat : avec une seconde de retard sur le carnet, la stratégie perd de l'argent face aux bots rapides. Les chiffres ci-dessous sont figés à l'arrêt.</div>
       <div class="sub">Simulation en direct, aucun ordre réel. Capital fictif <span id="bankroll">$1 000</span>. Fills comptés seulement quand un vrai trade passe à notre prix, après la file déjà affichée.</div>
     </div>
     <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center">
@@ -158,6 +159,16 @@ details p { color: var(--fg2); font-size: 13px; max-width: 70ch; }
         <span class="pill" id="r-updated">—</span>
       </div>
     </header>
+
+    <section class="panel">
+      <h2>Deux portefeuilles côte à côte</h2>
+      <div class="scroll"><table><thead><tr><th>Portefeuille</th><th class="t">Net $</th><th class="t">Récompenses $</th><th class="t">Positions $</th><th class="t">Rythme $/j</th><th class="t">Fills</th><th class="t">Depuis</th></tr></thead><tbody id="r-compare"></tbody></table></div>
+      <div class="note">Primes max : les marchés les mieux payés, quels qu'ils soient. Marchés lents : on exclut tout ce qui se lit en direct ailleurs (vues, météo, posts, matchs, prix) et on ne garde que les marchés à plus de 3 jours.</div>
+      <div class="tabs" role="tablist" aria-label="Portefeuille affiché" style="margin-top:12px">
+        <button type="button" role="tab" id="pfbtn-max" aria-selected="true">Primes max</button>
+        <button type="button" role="tab" id="pfbtn-slow" aria-selected="false">Marchés lents</button>
+      </div>
+    </section>
 
     <section class="money" aria-label="Argent net récompenses">
       <div class="big">
@@ -288,15 +299,31 @@ function showTab(name) {
 ['btc', 'rewards'].forEach(n => $('tabbtn-' + n).addEventListener('click', () => { showTab(n); tickRewards(); }));
 (function initTab() {
   let t = (location.hash || '').replace('#', '');
-  if (!['btc', 'rewards'].includes(t)) { try { t = localStorage.getItem('pm-tab') || 'btc'; } catch (e) { t = 'btc'; } }
-  showTab(['btc', 'rewards'].includes(t) ? t : 'btc');
+  if (!['btc', 'rewards'].includes(t)) { try { t = localStorage.getItem('pm-tab') || 'rewards'; } catch (e) { t = 'rewards'; } }
+  showTab(['btc', 'rewards'].includes(t) ? t : 'rewards');
 })();
+const PF = { max: { file: 'rewards_state.json', name: 'Primes max' }, slow: { file: 'rewards_slow_state.json', name: 'Marchés lents' } };
+let pfSel = 'max'; try { pfSel = localStorage.getItem('pm-pf') || 'max'; } catch (e) {}
+const pfData = {};
+function showPf(k) {
+  pfSel = k; ['max', 'slow'].forEach(n => $('pfbtn-' + n).setAttribute('aria-selected', n === k ? 'true' : 'false'));
+  try { localStorage.setItem('pm-pf', k); } catch (e) {}
+  if (pfData[k]) renderRewards(pfData[k]);
+  else { $('r-status').textContent = 'pas encore de données pour ce portefeuille'; $('r-dot').className = 'dot off'; }
+}
+['max', 'slow'].forEach(n => $('pfbtn-' + n).addEventListener('click', () => showPf(n)));
+function renderCompare() {
+  $('r-compare').innerHTML = ['max', 'slow'].map(k => {
+    const s = pfData[k]; if (!s) return `<tr><td>${PF[k].name}</td><td class="t" colspan="6">démarrage…</td></tr>`;
+    const t = s.totals, h = Math.floor((s.updated - s.started) / 3600), m = Math.floor((s.updated - s.started) % 3600 / 60);
+    return `<tr><td>${PF[k].name}</td><td class="t ${cls(t.net)}">${t.net.toFixed(2)}</td><td class="t">${t.rewards.toFixed(2)}</td><td class="t ${cls(t.trading)}">${t.trading.toFixed(2)}</td><td class="t">${Math.round(t.exp_usd_day)}</td><td class="t">${t.fills}</td><td class="t">${h} h ${String(m).padStart(2, '0')}</td></tr>`;
+  }).join('');
+}
 async function tickRewards() {
-  try {
-    const r = await fetch('rewards_state.json', { cache: 'no-store' });
-    if (r.ok) renderRewards(await r.json());
-    else { $('r-status').textContent = 'pas encore de données (HTTP ' + r.status + ')'; $('r-dot').className = 'dot off'; }
-  } catch (e) { $('r-status').textContent = 'données illisibles'; $('r-dot').className = 'dot off'; }
+  await Promise.all(['max', 'slow'].map(async k => {
+    try { const r = await fetch(PF[k].file, { cache: 'no-store' }); if (r.ok) pfData[k] = await r.json(); } catch (e) {}
+  }));
+  renderCompare(); showPf(pfSel);
 }
 
 function render(s) {
@@ -311,7 +338,7 @@ function render(s) {
   $('pulls').textContent = s.pulls != null ? `${s.pulls} retraits · hors marché ${s.pulled_pct} % du temps` : '';
   const pulled = (s.status || '').startsWith('pulled'); const stale = (Date.now() / 1000 - s.updated) > 30;
   $('dot').className = 'dot ' + (stale ? 'off' : pulled ? 'pulled' : 'live');
-  $('status').textContent = stale ? 'données figées (bot arrêté ?)' : (pulled ? 'cotes retirées · ' + s.status.slice(8) : s.status === 'quoting' ? 'cotes affichées' : s.status);
+  $('status').textContent = stale ? 'test arrêté' : (pulled ? 'cotes retirées · ' + s.status.slice(8) : s.status === 'quoting' ? 'cotes affichées' : s.status);
   const h = Math.floor(s.uptime_s / 3600), m = Math.floor(s.uptime_s % 3600 / 60); $('uptime').textContent = `en marche depuis ${h} h ${String(m).padStart(2, '0')}`;
   $('updated').textContent = 'maj ' + fmtTime(s.updated) + ' UTC';
   if (s.market) { $('q').textContent = s.market.question.replace('Bitcoin Up or Down - ', ''); $('left').textContent = s.market.secs_left + ' s'; }
