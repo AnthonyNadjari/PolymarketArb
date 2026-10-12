@@ -4,16 +4,16 @@
 /* Layout: summary strip (the money) on top, then the equity curve, then the live desk (market, quotes, fills), then settled markets. */
 :root {
   --bg: #f6f7f4; --surface: #ffffff; --fg: #15191c; --fg2: #5a6168; --fg3: #8a9199; --line: #dfe3e0;
-  --accent: #2a78d6; --naive: #eb6834; --good: #1a7f37; --bad: #c0392b; --warn: #b7791f; --pill: #eef1ee;
+  --accent: #2a78d6; --naive: #eb6834; --slow: #1baf7a; --good: #1a7f37; --bad: #c0392b; --warn: #b7791f; --pill: #eef1ee;
   --font: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
   --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
   --bg: #141716; --surface: #1c2020; --fg: #eceeea; --fg2: #aab1ab; --fg3: #7c847e; --line: #2c3231;
-  --accent: #3987e5; --naive: #d95926; --good: #3fb950; --bad: #f0665c; --warn: #d9a441; --pill: #262b2a; color-scheme: dark; } }
+  --accent: #3987e5; --naive: #d95926; --slow: #199e70; --good: #3fb950; --bad: #f0665c; --warn: #d9a441; --pill: #262b2a; color-scheme: dark; } }
 :root[data-theme="dark"] {
   --bg: #141716; --surface: #1c2020; --fg: #eceeea; --fg2: #aab1ab; --fg3: #7c847e; --line: #2c3231;
-  --accent: #3987e5; --naive: #d95926; --good: #3fb950; --bad: #f0665c; --warn: #d9a441; --pill: #262b2a; color-scheme: dark; }
+  --accent: #3987e5; --naive: #d95926; --slow: #199e70; --good: #3fb950; --bad: #f0665c; --warn: #d9a441; --pill: #262b2a; color-scheme: dark; }
 body { background: var(--bg); color: var(--fg); font-family: var(--font); font-size: 14px; line-height: 1.45; margin: 0; }
 .wrap { max-width: 1100px; margin: 0 auto; padding-block: 20px 40px; padding-inline: 16px; display: grid; gap: 20px; }
 header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 16px; }
@@ -70,9 +70,9 @@ details p { color: var(--fg2); font-size: 13px; max-width: 70ch; }
 
   <section class="money" aria-label="Argent net">
     <div class="big">
-      <div class="k">Argent net, stratégie esquive</div>
+      <div class="k">Argent net, stratégie réaliste</div>
       <div class="v" id="net">—</div>
-      <div class="note" id="netnote">gains à l'échéance − pertes + rebate maker (20 % des frais taker)</div>
+      <div class="note" id="netnote">cotes avec 1 s de retard sur le carnet · gains à l'échéance − pertes + rebate maker (20 % des frais taker)</div>
     </div>
     <div><div class="k">Brut à l'échéance</div><div class="v" id="gross">—</div></div>
     <div><div class="k">Rebate maker</div><div class="v" id="rebate">—</div></div>
@@ -80,13 +80,13 @@ details p { color: var(--fg2); font-size: 13px; max-width: 70ch; }
     <div><div class="k">Marchés réglés</div><div class="v" id="settled">—</div><div class="note" id="wl"></div></div>
     <div><div class="k">Fills</div><div class="v" id="fills">—</div><div class="note" id="shares"></div></div>
     <div><div class="k">Fills toxiques</div><div class="v" id="toxic">—</div><div class="note">prix contre nous de 2c+ dans les 10 s</div></div>
-    <div><div class="k">Témoin sans esquive</div><div class="v" id="naive">—</div><div class="note">même cotes, jamais retirées</div></div>
-    <div><div class="k">Avantage de l'esquive</div><div class="v" id="edge">—</div><div class="note" id="pulls"></div></div>
+    <div><div class="k">Témoin instantané</div><div class="v" id="naive">—</div><div class="note">cotes sans délai, jamais retirées (optimiste)</div></div>
+    <div><div class="k">Témoin esquive</div><div class="v" id="dodgenet">—</div><div class="note" id="pulls"></div></div>
   </section>
 
   <section class="panel">
     <h2>Courbe de l'argent net</h2>
-    <div class="legend"><span><i style="background:var(--accent)"></i>Esquive (retire ses cotes quand le BTC bouge)</span><span><i style="background:var(--naive)"></i>Témoin (ne retire jamais)</span></div>
+    <div class="legend"><span><i style="background:var(--slow)"></i>Réaliste (cotes avec 1 s de retard)</span><span><i style="background:var(--naive)"></i>Témoin instantané</span><span><i style="background:var(--accent)"></i>Témoin esquive</span></div>
     <svg class="chart" id="chart" viewBox="0 0 800 240" preserveAspectRatio="none" role="img" aria-label="Courbe de PnL net des deux stratégies"></svg>
     <div class="empty" id="chartempty" hidden>La courbe se dessine à mesure que les marchés se règlent, toutes les 5 minutes.</div>
   </section>
@@ -115,7 +115,7 @@ details p { color: var(--fg2); font-size: 13px; max-width: 70ch; }
   </div>
 
   <section class="panel">
-    <h2>Marchés réglés (stratégie esquive)</h2>
+    <h2>Marchés réglés (stratégie réaliste)</h2>
     <div class="scroll"><table><thead><tr><th>Fenêtre (UTC)</th><th>Résultat</th><th class="t">Fills</th><th class="t">Shares</th><th class="t">Position fin</th><th class="t">Brut $</th><th class="t">Rebate $</th><th class="t">Net $</th><th class="t">Cumul $</th></tr></thead><tbody id="mrows"></tbody></table></div>
     <div class="empty" id="mempty" hidden>Aucun marché réglé pour l'instant.</div>
   </section>
@@ -126,7 +126,7 @@ details p { color: var(--fg2); font-size: 13px; max-width: 70ch; }
       <p>Chaque fenêtre de 5 minutes est un marché. Le bot affiche un prix d'achat et un prix de vente pour le jeton Up, au meilleur prix du carnet ou un cran à l'intérieur quand il y a de la place. Il ne prend jamais le prix des autres, donc il ne paie pas de frais.</p>
       <p>Un fill est compté quand un vrai trade passe à notre prix, pour la part qui dépasse la quantité déjà affichée à ce niveau avant nous. C'est l'hypothèse prudente : on est dernier dans la file.</p>
       <p>À la fin des 5 minutes, les jetons Up valent $1 si le Bitcoin a fini au-dessus de son prix de départ, $0 sinon. Le brut est ce que rapportent nos positions, moins ce qu'elles ont coûté. Le rebate est l'estimation de la part des frais taker que Polymarket reverse aux makers.</p>
-      <p>La stratégie "esquive" retire ses cotes pendant 3 secondes dès que le Bitcoin bouge de plus de 3 points de base en 2 secondes. Le témoin garde les mêmes cotes en permanence. L'écart entre les deux mesure ce que coûte la sélection adverse des bots rapides.</p>
+      <p>La stratégie "réaliste" suit le carnet avec 1 seconde de retard, comme un vrai bot soumis au délai taker de 150 ms et au réseau : quand le prix saute, son ancienne cote reste exposée une seconde et peut être frappée au mauvais prix. C'est le chiffre à regarder. Le témoin instantané suit le carnet sans aucun délai, ce qui est impossible en vrai et surestime le gain. Le témoin esquive est instantané mais retire ses cotes 3 secondes dès que le Bitcoin bouge d'un point de base en 2 secondes ou que le carnet saute de 2 ticks.</p>
     </details>
     <h2 style="margin-top:14px">Journal</h2>
     <pre class="log" id="log"></pre>
@@ -145,7 +145,7 @@ function setMoney(id, x) { const el = $(id); el.textContent = usd(x); el.classNa
 
 function drawChart(curves) {
   const svg = $('chart'); const W = 800, H = 240, L = 48, R = 12, T = 12, B = 26;
-  const series = [['dodge', 'var(--accent)'], ['naive', 'var(--naive)']];
+  const series = [['slow', 'var(--slow)'], ['naive', 'var(--naive)'], ['dodge', 'var(--accent)']];
   const pts = series.map(([k]) => curves[k] || []);
   const all = pts.flat();
   if (all.length < 2) { svg.innerHTML = ''; $('chartempty').hidden = false; return; }
@@ -178,14 +178,14 @@ function drawChart(curves) {
 }
 
 function render(s) {
-  const d = s.dodge, n = s.naive;
+  const d = s.slow || s.dodge, n = s.naive, dg = s.dodge;
   $('bankroll').textContent = '$' + s.bankroll.toLocaleString('fr-FR');
   setMoney('net', d.pnl_net); setMoney('gross', d.pnl_gross); setMoney('rebate', d.rebate);
   $('roi').textContent = (d.return_on_bankroll_pct >= 0 ? '+' : '') + d.return_on_bankroll_pct.toFixed(2) + ' %'; $('roi').className = 'v ' + cls(d.pnl_net);
   $('settled').textContent = d.markets_settled; $('wl').textContent = `${d.wins} gagnants · ${d.losses} perdants · ${d.markets_traded} avec fills`;
   $('fills').textContent = d.fills; $('shares').textContent = d.shares + ' shares';
   $('toxic').textContent = d.fills ? (100 * d.toxic_rate).toFixed(0) + ' %' : '—';
-  setMoney('naive', n.pnl_net); setMoney('edge', d.pnl_net - n.pnl_net);
+  setMoney('naive', n.pnl_net); setMoney('dodgenet', dg.pnl_net);
   $('pulls').textContent = s.pulls != null ? `${s.pulls} retraits · hors marché ${s.pulled_pct} % du temps` : '';
   const pulled = (s.status || '').startsWith('pulled'); const stale = (Date.now() / 1000 - s.updated) > 30;
   $('dot').className = 'dot ' + (stale ? 'off' : pulled ? 'pulled' : 'live');
@@ -202,8 +202,9 @@ function render(s) {
   drawChart(s.curve);
   const fr = s.recent_fills || []; $('fillempty').hidden = fr.length > 0;
   $('fillrows').innerHTML = fr.slice(0, 15).map(f => `<tr><td>${fmtTime(f.t)}</td><td>${f.strategy}</td><td class="${f.side === 'BUY' ? 'pos' : 'neg'}">${f.side === 'BUY' ? 'achat' : 'vente'}</td><td class="t">${f.price.toFixed(2)}</td><td class="t">${f.qty}</td><td class="t">${f.mid != null ? f.mid.toFixed(3) : '—'}</td><td>${f.toxic == null ? '…' : f.toxic ? 'oui' : 'non'}</td></tr>`).join('');
-  const rows = (s.markets || []).slice().reverse(); $('mempty').hidden = rows.length > 0;
-  let cum = (s.markets || []).reduce((a, r) => a + r.net, 0);
+  const mk = s.markets_slow || s.markets || [];
+  const rows = mk.slice().reverse(); $('mempty').hidden = rows.length > 0;
+  let cum = mk.reduce((a, r) => a + r.net, 0);
   $('mrows').innerHTML = rows.slice(0, 40).map(r => { const c = cum; cum -= r.net; return `<tr><td>${fmtWin(r.ts)}</td><td>${r.outcome}${r.provisional ? ' (provisoire)' : ''}</td><td class="t">${r.fills}</td><td class="t">${r.shares}</td><td class="t">${r.inv_end}</td><td class="t ${cls(r.gross)}">${r.gross.toFixed(2)}</td><td class="t">${r.rebate.toFixed(3)}</td><td class="t ${cls(r.net)}">${r.net.toFixed(2)}</td><td class="t ${cls(c)}">${c.toFixed(2)}</td></tr>`; }).join('');
   $('log').textContent = (s.log || []).join('\n');
 }

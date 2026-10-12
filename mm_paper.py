@@ -32,14 +32,15 @@ ap.add_argument("--pull-ticks", type=int, default=2, help="pull quotes if the Po
 ap.add_argument("--no-quote-last", type=float, default=10, help="stop quoting in the last N seconds of the window")
 ap.add_argument("--pull-secs", type=float, default=3.0, help="stay out this many seconds after a fast move")
 ap.add_argument("--bankroll", type=float, default=1000.0)
+ap.add_argument("--latency", type=float, default=1.0, help="quote delay (s) of the 'slow' realistic strategy")
 ARGS = ap.parse_args()
 
 
 class Strategy:
     """One simulated maker. `dodge=True` pulls quotes after fast BTC moves."""
 
-    def __init__(self, name, dodge):
-        self.name, self.dodge = name, dodge
+    def __init__(self, name, dodge, latency=0.0):
+        self.name, self.dodge, self.latency = name, dodge, latency   # latency: our quotes follow the book this many seconds late
         self.reset_market()
         self.fills = []            # all fills (dicts)
         self.market_rows = []      # settled markets
@@ -101,7 +102,9 @@ class Strategy:
 
 class Bot:
     def __init__(self):
-        self.strats = {"dodge": Strategy("dodge", True), "naive": Strategy("naive", False)}
+        self.strats = {"dodge": Strategy("dodge", True), "naive": Strategy("naive", False),
+                       "slow": Strategy("slow", False, latency=ARGS.latency)}
+        self.best_hist = deque(maxlen=2000)   # (t, best_bid, best_ask) for late-quoting strategies
         self.restore()
         self.btc = deque(maxlen=600)       # (t, price)
         self.btc_px = None
@@ -128,12 +131,12 @@ class Bot:
             for name, s in self.strats.items():
                 sm = st.get(name, {}); s.pnl_gross = sm.get("pnl_gross", 0.0); s.rebate = sm.get("rebate", 0.0)
                 s.fills_n = sm.get("fills", 0); s.toxic = sm.get("toxic_fills", 0)
-                s.market_rows = st.get("markets" if name == "dodge" else "markets_naive", [])
+                s.market_rows = st.get("markets" if name == "dodge" else f"markets_{name}", [])
                 s.curve = [tuple(x) for x in st.get("curve", {}).get(name, [])] or [(time.time(), 0.0)]
                 s._restored_shares = sm.get("shares", 0.0); s._restored_toxic_n = sm.get("toxic_rated", 0)
             self.restored_pending = st.get("pending_raw", [])
             for name, s in self.strats.items():   # fills counter = fills of settled + pending markets
-                s.fills_n = sum(r["fills"] for r in s.market_rows) + sum(len(p["state"][name]["fills"]) for p in self.restored_pending)
+                s.fills_n = sum(r["fills"] for r in s.market_rows) + sum(len(p["state"].get(name, {"fills": []})["fills"]) for p in self.restored_pending)
             self.start = st.get("started", time.time()); self.restored_pulls = st.get("pulls", 0)
             self.restored_pulled_secs = st.get("pulled_secs", 0.0)
             print(f"restored state: dodge net {self.strats['dodge'].pnl_gross + self.strats['dodge'].rebate:+.2f} $, "
@@ -228,7 +231,13 @@ class Bot:
         pulled = now < self.pulled_until
         if not pulled and self._pull_t0 is not None:
             self.pulled_secs += now - self._pull_t0; self._pull_t0 = None
-        for s in self.strats.values(): s.quote(self.best_bid, self.best_ask, pulled)
+        self.best_hist.append((now, self.best_bid, self.best_ask))
+        for s in self.strats.values():
+            bb, ba = self.best_bid, self.best_ask
+            if s.latency > 0:   # use the book as it was `latency` seconds ago
+                for t, hb, ha in reversed(self.best_hist):
+                    if now - t >= s.latency: bb, ba = hb, ha; break
+            s.quote(bb, ba, pulled)
         self.status = ("pulled: " + self.last_pull_reason) if pulled else ("quoting" if self.market else "no market")
 
     def on_btc(self, px):
@@ -272,7 +281,7 @@ class Bot:
                 if now < pm["ts"] + 300 + 600: continue   # wait up to 10 min for resolution
                 out = pm.get("twap_up", True); provisional = True
             for s in self.strats.values():
-                st = pm["state"][s.name]
+                st = pm["state"].get(s.name, {"inv": 0.0, "cost": 0.0, "fills": []})
                 s.inv, s.cost, s.mkt_fills = st["inv"], st["cost"], st["fills"]
                 row = s.settle(pm["ts"], out, provisional)
                 if s.name == "dodge" and row["fills"]:
@@ -292,6 +301,7 @@ class Bot:
         twap_up = (sum(p1) / len(p1) >= sum(p0) / len(p0)) if p0 and p1 else True
         self.pending.append({"ts": ts, "state": state, "twap_up": twap_up})
         self.market = None; self.book = {"bids": {}, "asks": {}}; self.best_bid = self.best_ask = None
+        self.best_hist.clear()
 
     # ---------- state file ----------
     def write_state(self):
@@ -309,7 +319,7 @@ class Bot:
         state = {
             "updated": time.time(), "started": self.start, "uptime_s": round(time.time() - self.start),
             "bankroll": ARGS.bankroll, "params": {"size": ARGS.size, "max_inv": ARGS.max_inv, "pull_move_bp": ARGS.pull_move * 1e4, "pull_ticks": ARGS.pull_ticks, "no_quote_last": ARGS.no_quote_last,
-                                                   "pull_secs": ARGS.pull_secs, "fee_rate": FEE_RATE, "rebate_share": REBATE_SHARE},
+                                                   "pull_secs": ARGS.pull_secs, "fee_rate": FEE_RATE, "rebate_share": REBATE_SHARE, "latency": ARGS.latency},
             "status": self.status, "events": self.events, "btc": self.btc_px, "pulls": self.n_pulls,
             "pulled_pct": round(100 * self.pulled_secs / max(1, time.time() - self.start), 1), "pulled_secs": self.pulled_secs,
             "market": {"ts": self.market["ts"], "question": self.market["question"],
@@ -317,9 +327,10 @@ class Bot:
             "book": {"best_bid": self.best_bid, "best_ask": self.best_ask, "mid": self.mid(),
                      "bid_size": self.book["bids"].get(self.best_bid, 0) if self.best_bid else 0,
                      "ask_size": self.book["asks"].get(self.best_ask, 0) if self.best_ask else 0},
-            "dodge": summary(d), "naive": summary(n),
-            "curve": {"dodge": d.curve[-2000:], "naive": n.curve[-2000:]},
+            "dodge": summary(d), "naive": summary(n), "slow": summary(self.strats["slow"]),
+            "curve": {"dodge": d.curve[-2000:], "naive": n.curve[-2000:], "slow": self.strats["slow"].curve[-2000:]},
             "markets": (d.market_rows[-300:]), "markets_naive": (n.market_rows[-300:]),
+            "markets_slow": (self.strats["slow"].market_rows[-300:]),
             "recent_fills": list(self.recent_fills), "log": list(self.log), "pending": len(self.pending),
             "pending_raw": self.pending,
         }
