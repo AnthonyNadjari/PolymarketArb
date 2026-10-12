@@ -72,11 +72,10 @@ def books(token_ids):
 
 
 def yes_levels(by, bn):
-    """YES-equivalent book: bids = YES bids + (1 - NO asks); asks = YES asks + (1 - NO bids)."""
+    """YES book only. Polymarket mirrors every order into the complementary book (a YES bid at p is also
+    shown as a NO ask at 1-p), so adding the NO book would count each order twice."""
     bids = [(float(x["price"]), float(x["size"])) for x in by.get("bids", [])]
     asks = [(float(x["price"]), float(x["size"])) for x in by.get("asks", [])]
-    bids += [(round(1 - float(x["price"]), 4), float(x["size"])) for x in bn.get("asks", [])]
-    asks += [(round(1 - float(x["price"]), 4), float(x["size"])) for x in bn.get("bids", [])]
     return sorted(bids, key=lambda x: -x[0]), sorted(asks, key=lambda x: x[0])
 
 
