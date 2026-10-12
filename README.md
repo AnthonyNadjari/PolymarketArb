@@ -16,6 +16,15 @@ toutes les 5 minutes sur la branche `gh-pages`, servie par GitHub Pages :
 La page se rafraîchit seule. L'heure de la dernière donnée est affichée en haut à droite. Pour relancer le bot à la
 main : onglet Actions du repo, workflow paper-bot, "Run workflow".
 
+## Onglet "Récompenses de liquidité"
+
+`rewards_paper.py` simule en papier la collecte des récompenses de liquidité Polymarket (environ $200 000 par
+jour répartis sur ~18 000 marchés). Toutes les 15 minutes il choisit les 15 marchés où sa part estimée de la
+cagnotte est la plus grosse, affiche $1 000 de chaque côté à mi-chemin de l'écart maximal, recalcule sa part
+toutes les minutes depuis le vrai carnet (formule officielle : score quadratique, minimum des deux côtés,
+c = 3), et se fait remplir par les vrais trades qui traversent ses prix. Net = récompenses + résultat des positions.
+Workflow : `rewards-bot.yml`, publie `rewards_state.json` toutes les 5 minutes.
+
 ## Lancer chez toi
 
 ```bash

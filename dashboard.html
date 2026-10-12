@@ -48,6 +48,14 @@ dt { color: var(--fg2); } dd { margin: 0; font-family: var(--mono); font-variant
 .quote .v { font-size: 18px; }
 .empty { color: var(--fg3); font-size: 13px; padding: 8px 0; }
 .log { font-family: var(--mono); font-size: 12px; color: var(--fg2); white-space: pre-wrap; max-height: 160px; overflow: auto; margin: 0; }
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.tabs button { font: inherit; font-size: 14px; font-weight: 500; background: none; border: none; border-bottom: 2px solid transparent; color: var(--fg2); padding: 8px 12px; cursor: pointer; margin-bottom: -1px; }
+.tabs button[aria-selected="true"] { color: var(--fg); border-bottom-color: var(--accent); }
+.tabs button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.tabpane { display: grid; gap: 20px; }
+[hidden] { display: none !important; }
+td.q { white-space: normal; min-width: 220px; font-family: var(--font); }
+.tag { display: inline-block; font-size: 11px; color: var(--fg2); background: var(--pill); border-radius: 4px; padding: 0 5px; margin-left: 4px; }
 details summary { cursor: pointer; color: var(--fg2); font-size: 13px; }
 details p { color: var(--fg2); font-size: 13px; max-width: 70ch; }
 @media (max-width: 760px) { .money { grid-template-columns: 1fr 1fr; } .money .big { grid-column: span 2; grid-row: auto; } .big .v { font-size: 36px; } }
@@ -55,6 +63,11 @@ details p { color: var(--fg2); font-size: 13px; max-width: 70ch; }
 </style>
 
 <div class="wrap">
+  <nav class="tabs" role="tablist" aria-label="Stratégies">
+    <button type="button" role="tab" id="tabbtn-btc" aria-controls="tab-btc" aria-selected="true">BTC 5 min : maker</button>
+    <button type="button" role="tab" id="tabbtn-rewards" aria-controls="tab-rewards" aria-selected="false">Récompenses de liquidité</button>
+  </nav>
+  <div class="tabpane" id="tab-btc" role="tabpanel" aria-labelledby="tabbtn-btc">
   <header>
     <div>
       <h1>Maker papier sur Polymarket BTC 5 min</h1>
@@ -131,6 +144,65 @@ details p { color: var(--fg2); font-size: 13px; max-width: 70ch; }
     <h2 style="margin-top:14px">Journal</h2>
     <pre class="log" id="log"></pre>
   </section>
+  </div>
+
+  <div class="tabpane" id="tab-rewards" role="tabpanel" aria-labelledby="tabbtn-rewards" hidden>
+    <header>
+      <div>
+        <h1>Récompenses de liquidité Polymarket</h1>
+        <div class="sub">Polymarket paie chaque jour les makers qui affichent des prix près du milieu. Le bot cote en papier sur les marchés où la récompense est la moins disputée, encaisse sa part estimée, et subit les vrais trades qui traversent ses prix. Aucun ordre réel.</div>
+      </div>
+      <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center">
+        <span class="pill"><span class="dot" id="r-dot"></span><span id="r-status">connexion…</span></span>
+        <span class="pill" id="r-updated">—</span>
+      </div>
+    </header>
+
+    <section class="money" aria-label="Argent net récompenses">
+      <div class="big">
+        <div class="k">Argent net</div>
+        <div class="v" id="r-net">—</div>
+        <div class="note">récompenses estimées + résultat des positions (au prix milieu, puis au règlement)</div>
+      </div>
+      <div><div class="k">Récompenses</div><div class="v" id="r-rew">—</div></div>
+      <div><div class="k">Résultat des positions</div><div class="v" id="r-trd">—</div><div class="note">ce que les fills nous ont coûté ou rapporté</div></div>
+      <div><div class="k">Rythme actuel</div><div class="v" id="r-rate">—</div><div class="note">récompenses par jour si le carnet restait tel quel</div></div>
+      <div><div class="k">Capital engagé</div><div class="v" id="r-cap">—</div><div class="note" id="r-capnote"></div></div>
+      <div><div class="k">Fills</div><div class="v" id="r-fills">—</div></div>
+      <div><div class="k">Marchés suivis</div><div class="v" id="r-mk">—</div></div>
+      <div><div class="k">Depuis</div><div class="v" id="r-since">—</div></div>
+      <div><div class="k">Rendement / jour</div><div class="v" id="r-roi">—</div><div class="note">net par jour écoulé, en % du capital</div></div>
+    </section>
+
+    <section class="panel">
+      <h2>Courbe</h2>
+      <div class="legend"><span><i style="background:var(--slow)"></i>Net</span><span><i style="background:var(--accent)"></i>Récompenses</span><span><i style="background:var(--naive)"></i>Résultat des positions</span></div>
+      <svg class="chart" id="r-chart" viewBox="0 0 800 240" preserveAspectRatio="none" role="img" aria-label="Courbe des récompenses et du résultat des positions"></svg>
+      <div class="empty" id="r-chartempty" hidden>La courbe apparaît après quelques minutes.</div>
+    </section>
+
+    <section class="panel">
+      <h2>Marchés</h2>
+      <div class="scroll"><table><thead><tr><th>Marché</th><th class="t">$/jour</th><th class="t">Mid</th><th class="t">Nos prix</th><th class="t">Part</th><th class="t">Récomp. $</th><th class="t">Positions $</th><th class="t">Net $</th><th class="t">Stock</th><th class="t">Fills</th></tr></thead><tbody id="r-rows"></tbody></table></div>
+    </section>
+
+    <div class="grid2">
+      <section class="panel">
+        <h2>Meilleurs candidats maintenant</h2>
+        <div class="scroll"><table><thead><tr><th>Marché</th><th class="t">Pool $/j</th><th class="t">Notre part</th><th class="t">Attendu $/j</th></tr></thead><tbody id="r-cands"></tbody></table></div>
+      </section>
+      <section class="panel">
+        <details>
+          <summary>Comment ça marche</summary>
+          <p>Chaque marché éligible a une cagnotte quotidienne. Toutes les minutes, Polymarket regarde qui affiche des ordres à moins d'un certain écart du prix milieu, et donne plus de points aux ordres les plus proches. La cagnotte est partagée au prorata des points.</p>
+          <p>Le bot choisit les marchés où la cagnotte est grosse et la concurrence faible, affiche $1 000 de chaque côté à mi-chemin de l'écart maximal, et recalcule toutes les minutes. Sa part est estimée à partir du vrai carnet d'ordres.</p>
+          <p>Le risque : si quelqu'un d'informé achète ou vend sur nos prix, on se retrouve avec un stock qui peut perdre de la valeur. C'est la colonne "Positions". La stratégie n'a un edge que si les récompenses dépassent durablement ces pertes.</p>
+        </details>
+        <h2 style="margin-top:14px">Journal</h2>
+        <pre class="log" id="r-log"></pre>
+      </section>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -144,12 +216,15 @@ let lastUpdated = 0;
 function setMoney(id, x) { const el = $(id); el.textContent = usd(x); el.className = 'v ' + cls(x); }
 
 function drawChart(curves) {
-  const svg = $('chart'); const W = 800, H = 240, L = 48, R = 12, T = 12, B = 26;
-  const series = [['slow', 'var(--slow)'], ['naive', 'var(--naive)'], ['dodge', 'var(--accent)']];
-  const pts = series.map(([k]) => curves[k] || []);
-  const all = pts.flat();
-  if (all.length < 2) { svg.innerHTML = ''; $('chartempty').hidden = false; return; }
-  $('chartempty').hidden = true;
+  drawLines('chart', 'chartempty', [['slow', 'var(--slow)'], ['naive', 'var(--naive)'], ['dodge', 'var(--accent)']]
+    .map(([k, color]) => ({ pts: curves[k] || [], color })));
+}
+
+function drawLines(svgId, emptyId, series) {
+  const svg = $(svgId); const W = 800, H = 240, L = 56, R = 12, T = 12, B = 26;
+  const all = series.flatMap(x => x.pts);
+  if (all.length < 2) { svg.innerHTML = ''; $(emptyId).hidden = false; return; }
+  $(emptyId).hidden = true;
   const t0 = Math.min(...all.map(p => p[0])), t1 = Math.max(...all.map(p => p[0]));
   let y0 = Math.min(0, ...all.map(p => p[1])), y1 = Math.max(0, ...all.map(p => p[1]));
   if (y1 - y0 < 0.5) { const m = (y0 + y1) / 2; y0 = m - 0.25; y1 = m + 0.25; }
@@ -157,24 +232,70 @@ function drawChart(curves) {
   const sx = t => L + (W - L - R) * ((t - t0) / Math.max(1, t1 - t0));
   const sy = v => T + (H - T - B) * (1 - (v - y0) / (y1 - y0));
   let out = '';
-  const ticks = 4;
-  for (let i = 0; i <= ticks; i++) {
-    const v = y0 + (y1 - y0) * i / ticks, y = sy(v);
+  for (let i = 0; i <= 4; i++) {
+    const v = y0 + (y1 - y0) * i / 4, y = sy(v);
     out += `<line x1="${L}" x2="${W - R}" y1="${y}" y2="${y}" stroke="var(--line)" stroke-width="1"/>`;
-    out += `<text x="${L - 6}" y="${y + 4}" text-anchor="end" font-size="11" fill="var(--fg2)" font-family="var(--mono)">${v >= 0 ? '' : '−'}$${Math.abs(v).toFixed(2)}</text>`;
+    out += `<text x="${L - 6}" y="${y + 4}" text-anchor="end" font-size="11" fill="var(--fg2)" font-family="var(--mono)">${v >= 0 ? '' : '−'}$${Math.abs(v).toFixed(Math.abs(y1 - y0) > 20 ? 0 : 2)}</text>`;
   }
   const zy = sy(0); out += `<line x1="${L}" x2="${W - R}" y1="${zy}" y2="${zy}" stroke="var(--fg3)" stroke-width="1" stroke-dasharray="3 3"/>`;
   [t0, (t0 + t1) / 2, t1].forEach((t, i) => {
     out += `<text x="${sx(t)}" y="${H - 8}" text-anchor="${i === 0 ? 'start' : i === 2 ? 'end' : 'middle'}" font-size="11" fill="var(--fg2)" font-family="var(--mono)">${fmtTime(t)}</text>`;
   });
-  series.forEach(([k, color], i) => {
-    const p = pts[i]; if (!p.length) return;
-    const d = p.map((q, j) => (j ? 'L' : 'M') + sx(q[0]).toFixed(1) + ' ' + sy(q[1]).toFixed(1)).join(' ');
+  series.forEach(({ pts, color }) => {
+    if (!pts.length) return;
+    const d = pts.map((q, j) => (j ? 'L' : 'M') + sx(q[0]).toFixed(1) + ' ' + sy(q[1]).toFixed(1)).join(' ');
     out += `<path d="${d}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>`;
-    const last = p[p.length - 1];
+    const last = pts[pts.length - 1];
     out += `<circle cx="${sx(last[0])}" cy="${sy(last[1])}" r="4" fill="${color}" stroke="var(--surface)" stroke-width="2"/>`;
   });
   svg.innerHTML = out;
+}
+
+const esc = t => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+function renderRewards(s) {
+  const t = s.totals;
+  setMoney('r-net', t.net); setMoney('r-rew', t.rewards); setMoney('r-trd', t.trading);
+  $('r-rate').textContent = '$' + Math.round(t.exp_usd_day).toLocaleString('fr-FR') + '/j';
+  $('r-cap').textContent = '$' + t.capital_quoting.toLocaleString('fr-FR'); $('r-capnote').textContent = `${t.quoting} marchés cotés · $${s.params.capital} chacun`;
+  $('r-fills').textContent = t.fills; $('r-mk').textContent = t.markets_total;
+  const days = Math.max(1 / 1440, (s.updated - s.started) / 86400);
+  const h = Math.floor((s.updated - s.started) / 3600), m = Math.floor((s.updated - s.started) % 3600 / 60);
+  $('r-since').textContent = `${h} h ${String(m).padStart(2, '0')}`;
+  const roi = t.capital_quoting ? 100 * t.net / days / t.capital_quoting : 0;
+  $('r-roi').textContent = (roi >= 0 ? '+' : '') + roi.toFixed(2) + ' %'; $('r-roi').className = 'v ' + cls(t.net);
+  const stale = (Date.now() / 1000 - s.updated) > 600;
+  $('r-dot').className = 'dot ' + (stale ? 'off' : 'live'); $('r-status').textContent = stale ? 'données figées (bot arrêté ?)' : 'bot actif';
+  $('r-updated').textContent = 'maj ' + fmtTime(s.updated) + ' UTC';
+  const c = s.curve || [];
+  drawLines('r-chart', 'r-chartempty', [
+    { pts: c.map(x => [x[0], x[1]]), color: 'var(--slow)' },
+    { pts: c.map(x => [x[0], x[2]]), color: 'var(--accent)' },
+    { pts: c.map(x => [x[0], x[3]]), color: 'var(--naive)' }]);
+  $('r-rows').innerHTML = (s.rows || []).slice(0, 60).map(r => {
+    const state = r.resolved != null ? `<span class="tag">réglé ${r.resolved === 1 ? 'Oui' : r.resolved === 0 ? 'Non' : ''}</span>` : (r.active ? '' : '<span class="tag">en pause</span>');
+    const px = (r.bid != null || r.ask != null) ? `${r.bid != null ? r.bid.toFixed(3) : '—'} / ${r.ask != null ? r.ask.toFixed(3) : '—'}` : '—';
+    return `<tr><td class="q"><a href="https://polymarket.com/market/${esc(r.slug)}" target="_blank" rel="noopener" style="color:inherit">${esc(r.q)}</a>${state}</td><td class="t">${Math.round(r.rate)}</td><td class="t">${r.mid != null ? r.mid.toFixed(3) : '—'}</td><td class="t">${px}</td><td class="t">${(100 * r.share).toFixed(0)} %</td><td class="t">${r.rewards.toFixed(2)}</td><td class="t ${cls(r.trading)}">${r.trading.toFixed(2)}</td><td class="t ${cls(r.net)}">${r.net.toFixed(2)}</td><td class="t">${r.inv}</td><td class="t">${r.fills}</td></tr>`;
+  }).join('');
+  $('r-cands').innerHTML = (s.candidates || []).slice(0, 15).map(x => `<tr><td class="q">${esc(x.q)}</td><td class="t">${Math.round(x.rate)}</td><td class="t">${(100 * x.share).toFixed(0)} %</td><td class="t">${x.exp_usd_day.toFixed(0)}</td></tr>`).join('');
+  $('r-log').textContent = (s.log || []).join('\n');
+}
+
+function showTab(name) {
+  ['btc', 'rewards'].forEach(n => { $('tab-' + n).hidden = n !== name; $('tabbtn-' + n).setAttribute('aria-selected', n === name ? 'true' : 'false'); });
+  try { localStorage.setItem('pm-tab', name); } catch (e) {}
+}
+['btc', 'rewards'].forEach(n => $('tabbtn-' + n).addEventListener('click', () => { showTab(n); tickRewards(); }));
+(function initTab() {
+  let t = (location.hash || '').replace('#', '');
+  if (!['btc', 'rewards'].includes(t)) { try { t = localStorage.getItem('pm-tab') || 'btc'; } catch (e) { t = 'btc'; } }
+  showTab(['btc', 'rewards'].includes(t) ? t : 'btc');
+})();
+async function tickRewards() {
+  try {
+    const r = await fetch('rewards_state.json', { cache: 'no-store' });
+    if (r.ok) renderRewards(await r.json());
+    else { $('r-status').textContent = 'pas encore de données (HTTP ' + r.status + ')'; $('r-dot').className = 'dot off'; }
+  } catch (e) { $('r-status').textContent = 'données illisibles'; $('r-dot').className = 'dot off'; }
 }
 
 function render(s) {
@@ -216,6 +337,7 @@ async function tick() {
     else { $('status').textContent = 'données introuvables (HTTP ' + r.status + ')'; $('dot').className = 'dot off'; }
   } catch (e) { $('status').textContent = 'données illisibles : ' + (e && e.message ? e.message : e); $('dot').className = 'dot off'; }
 }
-$('reload').addEventListener('click', async () => { $('reload').textContent = 'Chargement…'; await tick(); $('reload').textContent = 'Recharger'; });
+$('reload').addEventListener('click', async () => { $('reload').textContent = 'Chargement…'; await tick(); await tickRewards(); $('reload').textContent = 'Recharger'; });
 tick(); setInterval(tick, 3000);
+tickRewards(); setInterval(tickRewards, 15000);
 </script>

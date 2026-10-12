@@ -35,7 +35,13 @@ jobs:
           publish() {
             cp state.json live/state.json
             { echo '<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head><body>'; cat dashboard.html; echo '</body></html>'; } > live/index.html
-            (cd live && git add -A && git commit -qm "state $(date -u +%FT%TZ)" && (git pull -q --rebase || true) && git push -q) || true
+            for i in 1 2 3; do
+              (cd live && git pull -q --rebase -X theirs || git rebase --abort) 2>/dev/null
+              cp state.json live/state.json
+              { echo '<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head><body>'; cat dashboard.html; echo '</body></html>'; } > live/index.html
+              (cd live && git add -A && git commit -qm "state $(date -u +%FT%TZ)" ; git push -q) && break
+              sleep 5
+            done
           }
           END=$(( $(date +%s) + 350*60 ))
           while [ "$(date +%s)" -lt "$END" ] && kill -0 "$BOT" 2>/dev/null; do
