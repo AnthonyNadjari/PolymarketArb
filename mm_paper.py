@@ -39,8 +39,11 @@ ARGS = ap.parse_args()
 class Strategy:
     """One simulated maker. `dodge=True` pulls quotes after fast BTC moves."""
 
+    VERSION = 2   # bump to discard stored history of this strategy on restart
+
     def __init__(self, name, dodge, latency=0.0):
         self.name, self.dodge, self.latency = name, dodge, latency   # latency: our quotes follow the book this many seconds late
+        self.bid_off_until = self.ask_off_until = 0.0                # a filled order is gone until we re-post one
         self.reset_market()
         self.fills = []            # all fills (dicts)
         self.market_rows = []      # settled markets
@@ -65,8 +68,9 @@ class Strategy:
         bid = round(best_bid + TICK, 2) if spread > TICK + 1e-9 else best_bid   # improve when there is room
         ask = round(best_ask - TICK, 2) if spread > TICK + 1e-9 else best_ask
         if bid >= ask: bid, ask = best_bid, best_ask
-        self.bid = bid if self.inv < ARGS.max_inv and 0.05 <= bid <= 0.95 else None
-        self.ask = ask if self.inv > -ARGS.max_inv and 0.05 <= ask <= 0.95 else None
+        now = time.time()
+        self.bid = bid if self.inv < ARGS.max_inv and 0.05 <= bid <= 0.95 and now >= self.bid_off_until else None
+        self.ask = ask if self.inv > -ARGS.max_inv and 0.05 <= ask <= 0.95 and now >= self.ask_off_until else None
 
     def on_trade(self, side, price, size, level_size_before, mid_now, t):
         """side = taker side in Up terms ('SELL' hits bids, 'BUY' lifts asks)."""
@@ -78,6 +82,9 @@ class Strategy:
             ahead = level_size_before if abs(price - self.ask) < 1e-9 else 0.0
             qty = min(ARGS.size, max(0.0, size - ahead)); px = self.ask; sign = -1
         if qty < 1: return None
+        # the resting order is consumed; re-posting takes one latency cycle (instant for latency 0)
+        if sign > 0: self.bid = None; self.bid_off_until = time.time() + self.latency
+        else: self.ask = None; self.ask_off_until = time.time() + self.latency
         self.inv += sign * qty; self.cost += sign * qty * px
         reb = REBATE_SHARE * FEE_RATE * px * (1 - px) * qty
         f = {"t": t, "side": "BUY" if sign > 0 else "SELL", "price": px, "qty": round(qty, 2), "mid": mid_now,
@@ -104,6 +111,7 @@ class Bot:
     def __init__(self):
         self.strats = {"dodge": Strategy("dodge", True), "naive": Strategy("naive", False),
                        "slow": Strategy("slow", False, latency=ARGS.latency)}
+        self.strats["dodge"].VERSION = self.strats["naive"].VERSION = 1
         self.best_hist = deque(maxlen=2000)   # (t, best_bid, best_ask) for late-quoting strategies
         self.restore()
         self.btc = deque(maxlen=600)       # (t, price)
@@ -128,7 +136,13 @@ class Bot:
         if not os.path.exists(ARGS.state): return
         try:
             st = json.load(open(ARGS.state))
+            versions = st.get("versions", {})
             for name, s in self.strats.items():
+                if versions.get(name, 1) != s.VERSION:
+                    print(f"strategy {name}: version changed ({versions.get(name, 1)} -> {s.VERSION}), history reset", flush=True)
+                    st[name] = {}; st["markets" if name == "dodge" else f"markets_{name}"] = []
+                    st.setdefault("curve", {})[name] = []
+                    for p in st.get("pending_raw", []): p["state"].pop(name, None)
                 sm = st.get(name, {}); s.pnl_gross = sm.get("pnl_gross", 0.0); s.rebate = sm.get("rebate", 0.0)
                 s.fills_n = sm.get("fills", 0); s.toxic = sm.get("toxic_fills", 0)
                 s.market_rows = st.get("markets" if name == "dodge" else f"markets_{name}", [])
@@ -333,6 +347,7 @@ class Bot:
             "markets_slow": (self.strats["slow"].market_rows[-300:]),
             "recent_fills": list(self.recent_fills), "log": list(self.log), "pending": len(self.pending),
             "pending_raw": self.pending,
+            "versions": {k: v.VERSION for k, v in self.strats.items()},
         }
         tmp = ARGS.state + ".tmp"
         with open(tmp, "w") as f: json.dump(state, f)
