@@ -71,6 +71,7 @@ details p { color: var(--fg2); font-size: 13px; max-width: 70ch; }
   <header>
     <div>
       <h1>Maker papier sur Polymarket BTC 5 min</h1>
+      <div class="note" style="color:var(--fg);font-size:13px;margin:4px 0 6px">Test arrêté le 12 octobre à 09:15 UTC. Résultat : avec une seconde de retard sur le carnet, la stratégie perd de l'argent face aux bots rapides. Les chiffres ci-dessous sont figés à l'arrêt.</div>
       <div class="sub">Simulation en direct, aucun ordre réel. Capital fictif <span id="bankroll">$1 000</span>. Fills comptés seulement quand un vrai trade passe à notre prix, après la file déjà affichée.</div>
     </div>
     <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center">
@@ -297,8 +298,8 @@ function showTab(name) {
 ['btc', 'rewards'].forEach(n => $('tabbtn-' + n).addEventListener('click', () => { showTab(n); tickRewards(); }));
 (function initTab() {
   let t = (location.hash || '').replace('#', '');
-  if (!['btc', 'rewards'].includes(t)) { try { t = localStorage.getItem('pm-tab') || 'btc'; } catch (e) { t = 'btc'; } }
-  showTab(['btc', 'rewards'].includes(t) ? t : 'btc');
+  if (!['btc', 'rewards'].includes(t)) { try { t = localStorage.getItem('pm-tab') || 'rewards'; } catch (e) { t = 'rewards'; } }
+  showTab(['btc', 'rewards'].includes(t) ? t : 'rewards');
 })();
 const PF = { max: { file: 'rewards_state.json', name: 'Primes max' }, slow: { file: 'rewards_slow_state.json', name: 'Marchés lents' } };
 let pfSel = 'max'; try { pfSel = localStorage.getItem('pm-pf') || 'max'; } catch (e) {}
@@ -336,7 +337,7 @@ function render(s) {
   $('pulls').textContent = s.pulls != null ? `${s.pulls} retraits · hors marché ${s.pulled_pct} % du temps` : '';
   const pulled = (s.status || '').startsWith('pulled'); const stale = (Date.now() / 1000 - s.updated) > 30;
   $('dot').className = 'dot ' + (stale ? 'off' : pulled ? 'pulled' : 'live');
-  $('status').textContent = stale ? 'données figées (bot arrêté ?)' : (pulled ? 'cotes retirées · ' + s.status.slice(8) : s.status === 'quoting' ? 'cotes affichées' : s.status);
+  $('status').textContent = stale ? 'test arrêté' : (pulled ? 'cotes retirées · ' + s.status.slice(8) : s.status === 'quoting' ? 'cotes affichées' : s.status);
   const h = Math.floor(s.uptime_s / 3600), m = Math.floor(s.uptime_s % 3600 / 60); $('uptime').textContent = `en marche depuis ${h} h ${String(m).padStart(2, '0')}`;
   $('updated').textContent = 'maj ' + fmtTime(s.updated) + ' UTC';
   if (s.market) { $('q').textContent = s.market.question.replace('Bitcoin Up or Down - ', ''); $('left').textContent = s.market.secs_left + ' s'; }

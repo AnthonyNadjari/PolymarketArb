@@ -1,9 +1,8 @@
 # Runs the paper market maker on a GitHub-hosted runner, 6 hours at a time, and publishes
 # state.json + the dashboard to the gh-pages branch every 5 minutes (served by GitHub Pages).
 name: paper-bot
+# Test ended on 2026-10-12: no edge for a maker that is not ultra-fast. Manual runs only.
 on:
-  schedule:
-    - cron: "0 */6 * * *"
   workflow_dispatch:
 permissions:
   contents: write
