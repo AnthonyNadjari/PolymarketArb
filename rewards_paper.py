@@ -26,6 +26,9 @@ ap.add_argument("--min-hours-left", type=float, default=2.0, help="do not start 
 ap.add_argument("--placement", type=float, default=0.5, help="quote distance from mid as a fraction of max spread")
 ap.add_argument("--reselect-min", type=float, default=15.0)
 ap.add_argument("--duration-min", type=float, default=0, help="stop after N minutes (0 = forever)")
+ap.add_argument("--profile", choices=["max", "slow"], default="max",
+                help="max: best rewards anywhere; slow: skip markets whose outcome can be watched live")
+ap.add_argument("--min-days-left", type=float, default=0, help="slow profile: only markets ending at least this far out")
 ARGS = ap.parse_args()
 S = requests.Session()
 S.headers["User-Agent"] = "pm-rewards-paper/0.1"
@@ -99,6 +102,25 @@ def q_min(q1, q2, mid):
     return min(q1, q2)
 
 
+# Markets whose outcome is observable in real time somewhere else (view counters, thermometers, post counts,
+# live games, prices). Informed traders watch the source and pick off stale quotes.
+LIVE_WORDS = ("view", "video", "views", "post ", "posts", "tweet", "temperature", "precipitation", "rain", "snow",
+              "wind", "weather", "earthquake", "hurricane", "up or down", "opens up", "close above", "close below",
+              "touchdown", " vs", "vs.", "points", "goals", "yards", "score", "match", "game ", "set ", "map ",
+              "price of", "above $", "below $", "reach $", "hit $", "between $", "#1", "app store", "box office",
+              "openrouter", "spotify", "billboard", "chart", "streams", "followers", "subscribers", "mention",
+              "hit (", "crude", "natural gas", "silver", "gold", "oil", "xag", "xau", "bitcoin", "ethereum", "solana",
+              "odds", "outage", "airdrop", "fdv", "market cap", "home value", "price")
+LIVE_TAGS = ("sports", "weather", "crypto prices", "esports", "nfl", "nba", "mlb", "nhl", "soccer", "tennis",
+             "mentions", "tweet markets", "youtube", "mrbeast", "daily", "hourly", "up or down", "stocks")
+
+
+def is_live(m):
+    q = (m.get("question") or "").lower()
+    tags = " ".join(m.get("tags") or []).lower()
+    return any(w in q for w in LIVE_WORDS) or any(t in tags for t in LIVE_TAGS)
+
+
 def rate_of(m):
     return sum(r.get("rewards_daily_rate", 0) for r in (m.get("rewards", {}).get("rates") or []))
 
@@ -162,7 +184,9 @@ class Bot:
         ms = [m for m in sampling_markets() if m.get("accepting_orders") and m.get("rewards") and len(m.get("tokens", [])) == 2]
         now = time.time()
         ms = [m for m in ms if rate_of(m) >= ARGS.min_rate and m["rewards"].get("max_spread", 0) > 0
-              and (end_ts(m) or now + 1e9) > now + ARGS.min_hours_left * 3600]
+              and (end_ts(m) or now + 1e9) > now + max(ARGS.min_hours_left * 3600, ARGS.min_days_left * 86400)]
+        if ARGS.profile == "slow":
+            ms = [m for m in ms if not is_live(m)]
         bk = books([t["token_id"] for m in ms for t in m["tokens"]])
         cands = []
         for m in ms:
@@ -301,7 +325,7 @@ class Bot:
                          "fills": p.fills, "end": p.end, "tags": p.tags})
         st = {"updated": time.time(), "started": self.t0, "samples": self.samples,
               "params": {"k": ARGS.k, "capital": ARGS.capital, "min_rate": ARGS.min_rate, "placement": ARGS.placement,
-                         "min_hours_left": ARGS.min_hours_left},
+                         "min_hours_left": ARGS.min_hours_left, "profile": ARGS.profile, "min_days_left": ARGS.min_days_left},
               "totals": {"rewards": round(rewards, 2), "trading": round(trading, 2), "net": round(net, 2),
                          "quoting": len(active), "capital_quoting": round(len(active) * ARGS.capital),
                          "fills": sum(p.fills for p in ps), "markets_total": len(ps),

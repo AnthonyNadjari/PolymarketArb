@@ -28,8 +28,11 @@ jobs:
         run: |
           set +e
           cp live/rewards_state.json rewards_state.json 2>/dev/null || true
+          cp live/rewards_slow_state.json rewards_slow_state.json 2>/dev/null || true
           python rewards_paper.py --state rewards_state.json > bot.log 2>&1 &
           BOT=$!
+          python rewards_paper.py --state rewards_slow_state.json --profile slow --min-days-left 3 --min-rate 10 > bot_slow.log 2>&1 &
+          BOT2=$!
           git -C live config user.name "rewards-bot"
           git -C live config user.email "rewards-bot@users.noreply.github.com"
           publish() {
@@ -37,6 +40,7 @@ jobs:
             for i in 1 2 3; do
               (cd live && git pull -q --rebase -X theirs || git rebase --abort) 2>/dev/null
               cp rewards_state.json live/rewards_state.json
+              [ -f rewards_slow_state.json ] && cp rewards_slow_state.json live/rewards_slow_state.json
               { echo '<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head><body>'; cat dashboard.html; echo '</body></html>'; } > live/index.html
               (cd live && git add -A && git commit -qm "rewards $(date -u +%FT%TZ)" ; git push -q) && break
               sleep 5
@@ -47,6 +51,6 @@ jobs:
             sleep 300
             publish
           done
-          kill "$BOT" 2>/dev/null; sleep 2
+          kill "$BOT" "$BOT2" 2>/dev/null; sleep 2
           publish
-          echo "--- bot log tail"; tail -40 bot.log
+          echo "--- bot log tail"; tail -40 bot.log; echo "--- slow bot log tail"; tail -40 bot_slow.log

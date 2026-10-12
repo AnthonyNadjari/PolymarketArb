@@ -25,6 +25,9 @@ toutes les minutes depuis le vrai carnet (formule officielle : score quadratique
 c = 3), et se fait remplir par les vrais trades qui traversent ses prix. Net = récompenses + résultat des positions.
 Workflow : `rewards-bot.yml`, publie `rewards_state.json` toutes les 5 minutes.
 
+Un second portefeuille "marchés lents" (`--profile slow --min-days-left 3`) tourne en parallèle : il exclut les marchés
+dont l'issue se lit en direct ailleurs (vues, météo, posts, matchs, prix) et publie `rewards_slow_state.json`.
+
 ## Lancer chez toi
 
 ```bash
