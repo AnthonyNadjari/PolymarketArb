@@ -129,6 +129,7 @@ class Pos:
         self.bid = self.ask = None; self.size = 0.0; self.bid_ahead = self.ask_ahead = 0.0
         self.mid = None; self.share = 0.0; self.last_trade_t = int(time.time()); self.seen = []
         self.resolved = None; self.started = time.time()
+        self.qhist = []                      # [t_set, bid, ask, bid_ahead, ask_ahead]: quotes as they were live
 
     def value(self):
         if self.resolved is not None:
@@ -197,32 +198,39 @@ class Bot:
 
     # ---- fills from real trades since last sample
     def process_trades(self, p):
-        if p.bid is None and p.ask is None: return
+        hist = getattr(p, "qhist", None) or [[0, p.bid, p.ask, p.bid_ahead, p.ask_ahead]]
+        if all(h[1] is None and h[2] is None for h in hist): return
         tr = get_json(DATA, {"market": p.cid, "limit": 200}) or []
         new = [t for t in tr if int(t.get("timestamp", 0)) >= p.last_trade_t and t.get("transactionHash") not in p.seen]
         new.sort(key=lambda t: int(t["timestamp"]))
         for t in new:
+            ts = int(t["timestamp"]) - 4                  # on-chain timestamp is a few seconds after the match
+            live = [h for h in hist if h[0] <= ts]
+            if not live: continue                         # before we started quoting
+            h = live[-1]                                  # the quote that was resting at that moment
+            bid, ask = h[1], h[2]
             price, size = float(t["price"]), float(t["size"])
             taker_buy = t.get("side") == "BUY"
-            # YES-equivalent taker direction and price
             if int(t.get("outcomeIndex", 0)) == 0:
                 hits_bids, x = (not taker_buy), price
             else:
                 hits_bids, x = taker_buy, round(1 - price, 4)
-            if hits_bids and p.bid is not None and x <= p.bid + 1e-9 and p.inv() < p.size:
-                avail = size - (p.bid_ahead if abs(x - p.bid) < 1e-9 else 0)
-                if abs(x - p.bid) < 1e-9: p.bid_ahead = max(0.0, p.bid_ahead - size)
+            if hits_bids and bid is not None and x <= bid + 1e-9 and p.inv() < p.size:
+                same = abs(x - bid) < 1e-9
+                avail = size - (h[3] if same else 0)
+                if same: h[3] = max(0.0, h[3] - size)
                 q = min(max(0.0, avail), p.size - max(0.0, p.inv()))
                 if q >= 1:
-                    p.n_yes += q; p.cash -= q * p.bid; p.fills += 1
-                    self.say(f"fill BUY YES {q:.0f} @ {p.bid:.3f} | {p.q[:50]}")
-            elif (not hits_bids) and p.ask is not None and x >= p.ask - 1e-9 and -p.inv() < p.size:
-                avail = size - (p.ask_ahead if abs(x - p.ask) < 1e-9 else 0)
-                if abs(x - p.ask) < 1e-9: p.ask_ahead = max(0.0, p.ask_ahead - size)
+                    p.n_yes += q; p.cash -= q * bid; p.fills += 1
+                    self.say(f"fill BUY YES {q:.0f} @ {bid:.3f} | {p.q[:50]}")
+            elif (not hits_bids) and ask is not None and x >= ask - 1e-9 and -p.inv() < p.size:
+                same = abs(x - ask) < 1e-9
+                avail = size - (h[4] if same else 0)
+                if same: h[4] = max(0.0, h[4] - size)
                 q = min(max(0.0, avail), p.size - max(0.0, -p.inv()))
                 if q >= 1:
-                    p.n_no += q; p.cash -= q * (1 - p.ask); p.fills += 1
-                    self.say(f"fill SELL YES {q:.0f} @ {p.ask:.3f} | {p.q[:50]}")
+                    p.n_no += q; p.cash -= q * (1 - ask); p.fills += 1
+                    self.say(f"fill SELL YES {q:.0f} @ {ask:.3f} | {p.q[:50]}")
         if new:
             p.last_trade_t = int(new[-1]["timestamp"])
             p.seen = (p.seen + [t.get("transactionHash") for t in new])[-60:]
@@ -242,7 +250,8 @@ class Bot:
             if mid is None: p.bid = p.ask = None; continue
             p.mid = round(mid, 4)
             if not p.active or (p.end and time.time() > p.end - 600):
-                p.bid = p.ask = None; p.share = 0.0; continue
+                p.bid = p.ask = None; p.share = 0.0
+                p.qhist = (getattr(p, "qhist", []) + [[time.time(), None, None, 0, 0]])[-15:]; continue
             d = p.v * ARGS.placement / 100
             best_bid = bids[0][0] if bids else 0.0; best_ask = asks[0][0] if asks else 1.0
             bid = math.floor((mid - d) / p.tick + 1e-9) * p.tick; ask = math.ceil((mid + d) / p.tick - 1e-9) * p.tick
@@ -252,6 +261,8 @@ class Bot:
             p.ask = round(ask, 4) if -p.inv() < p.size and ask < 1 else None
             p.bid_ahead = sum(s for x, s in bids if abs(x - (p.bid or -1)) < 1e-9)
             p.ask_ahead = sum(s for x, s in asks if abs(x - (p.ask or -1)) < 1e-9)
+            if not hasattr(p, "qhist"): p.qhist = []
+            p.qhist = (p.qhist + [[time.time(), p.bid, p.ask, p.bid_ahead, p.ask_ahead]])[-15:]
             q1 = sum(score((mid - x) * 100, p.v) * s for x, s in bids if s >= p.min_size)
             q2 = sum(score((x - mid) * 100, p.v) * s for x, s in asks if s >= p.min_size)
             others = q_min(q1, q2, mid)
