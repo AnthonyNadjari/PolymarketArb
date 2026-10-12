@@ -161,13 +161,15 @@ details p { color: var(--fg2); font-size: 13px; max-width: 70ch; }
 
     <section class="panel">
       <h2>Portefeuilles côte à côte</h2>
-      <div class="scroll"><table><thead><tr><th>Portefeuille</th><th class="t">Net $</th><th class="t">Récompenses $</th><th class="t">Positions $</th><th class="t">Rythme $/j</th><th class="t">Fills</th><th class="t">Pire cas $</th><th class="t">Depuis</th></tr></thead><tbody id="r-compare"></tbody></table></div>
-      <div class="note">Primes max : les marchés les mieux payés, quels qu'ils soient. Marchés lents : on exclut tout ce qui se lit en direct ailleurs (vues, météo, posts, matchs, prix) et on ne garde que les marchés à plus de 3 jours.<br>Version pessimiste : même portefeuille, mais on suppose le pire partout. On passe en tête de file, donc on est rempli plus souvent. Si le prix saute par-dessus notre ordre entre deux minutes, on est rempli en entier au mauvais prix. Un concurrent arrive tout de suite et prend la moitié de la prime. Le stock est valorisé au prix auquel on pourrait le revendre, pas au milieu.<br>Pire cas : le net si tous les marchés où l'on a du stock se réglaient contre nous maintenant.</div>
+      <div class="scroll"><table><thead><tr><th>Portefeuille</th><th class="t">Net $</th><th class="t">Récompenses $</th><th class="t">Positions $</th><th class="t">Rythme $/j</th><th class="t">Fills</th><th class="t">Pire cas $</th><th class="t">Capital $</th><th class="t">Depuis</th></tr></thead><tbody id="r-compare"></tbody></table></div>
+      <div class="note">Primes max : les marchés les mieux payés, quels qu'ils soient. Marchés lents : on exclut tout ce qui se lit en direct ailleurs (vues, météo, posts, matchs, prix) et on ne garde que les marchés à plus de 3 jours.<br>Version pessimiste : même portefeuille, mais on suppose le pire partout. On passe en tête de file, donc on est rempli plus souvent. Si le prix saute par-dessus notre ordre entre deux minutes, on est rempli en entier au mauvais prix. Un concurrent arrive tout de suite et prend la moitié de la prime. Le stock est valorisé au prix auquel on pourrait le revendre, pas au milieu.<br>Taille minimale : version pessimiste qui n'affiche que le minimum exigé pour toucher la prime (souvent 20 à 50 jetons) au lieu de $1 000 par marché. C'est le test qui tranche.<br>Pire cas : le net si tous les marchés où l'on a du stock se réglaient contre nous maintenant.</div>
       <div class="tabs" role="tablist" aria-label="Portefeuille affiché" style="margin-top:12px">
         <button type="button" role="tab" id="pfbtn-max" aria-selected="true">Primes max</button>
         <button type="button" role="tab" id="pfbtn-slow" aria-selected="false">Marchés lents</button>
         <button type="button" role="tab" id="pfbtn-maxp" aria-selected="false">Primes max, pessimiste</button>
         <button type="button" role="tab" id="pfbtn-slowp" aria-selected="false">Marchés lents, pessimiste</button>
+        <button type="button" role="tab" id="pfbtn-maxm" aria-selected="false">Primes max, taille min.</button>
+        <button type="button" role="tab" id="pfbtn-slowm" aria-selected="false">Marchés lents, taille min.</button>
       </div>
     </section>
 
@@ -269,7 +271,7 @@ function renderRewards(s) {
   const t = s.totals;
   setMoney('r-net', t.net); setMoney('r-rew', t.rewards); setMoney('r-trd', t.trading);
   $('r-rate').textContent = '$' + Math.round(t.exp_usd_day).toLocaleString('fr-FR') + '/j';
-  $('r-cap').textContent = '$' + t.capital_quoting.toLocaleString('fr-FR'); $('r-capnote').textContent = `${t.quoting} marchés cotés · $${s.params.capital} chacun`;
+  $('r-cap').textContent = '$' + t.capital_quoting.toLocaleString('fr-FR'); $('r-capnote').textContent = s.params.min_size ? `${t.quoting} marchés cotés · taille minimale` : `${t.quoting} marchés cotés · $${s.params.capital} chacun`;
   $('r-fills').textContent = t.fills; $('r-mk').textContent = t.markets_total;
   const days = Math.max(1 / 1440, (s.updated - s.started) / 86400);
   const h = Math.floor((s.updated - s.started) / 3600), m = Math.floor((s.updated - s.started) % 3600 / 60);
@@ -304,7 +306,8 @@ function showTab(name) {
   showTab(['btc', 'rewards'].includes(t) ? t : 'rewards');
 })();
 const PF = { max: { file: 'rewards_state.json', name: 'Primes max' }, slow: { file: 'rewards_slow_state.json', name: 'Marchés lents' },
-  maxp: { file: 'rewards_max_pess_state.json', name: 'Primes max, pessimiste' }, slowp: { file: 'rewards_slow_pess_state.json', name: 'Marchés lents, pessimiste' } };
+  maxp: { file: 'rewards_max_pess_state.json', name: 'Primes max, pessimiste' }, slowp: { file: 'rewards_slow_pess_state.json', name: 'Marchés lents, pessimiste' },
+  maxm: { file: 'rewards_max_min_state.json', name: 'Primes max, taille min., pessimiste' }, slowm: { file: 'rewards_slow_min_state.json', name: 'Marchés lents, taille min., pessimiste' } };
 const PFK = Object.keys(PF);
 let pfSel = 'max'; try { pfSel = localStorage.getItem('pm-pf') || 'max'; } catch (e) {}
 const pfData = {};
@@ -318,9 +321,9 @@ function showPf(k) {
 PFK.forEach(n => $('pfbtn-' + n).addEventListener('click', () => showPf(n)));
 function renderCompare() {
   $('r-compare').innerHTML = PFK.map(k => {
-    const s = pfData[k]; if (!s) return `<tr><td>${PF[k].name}</td><td class="t" colspan="7">démarrage…</td></tr>`;
+    const s = pfData[k]; if (!s) return `<tr><td>${PF[k].name}</td><td class="t" colspan="8">démarrage…</td></tr>`;
     const t = s.totals, h = Math.floor((s.updated - s.started) / 3600), m = Math.floor((s.updated - s.started) % 3600 / 60);
-    return `<tr><td>${PF[k].name}</td><td class="t ${cls(t.net)}">${t.net.toFixed(2)}</td><td class="t">${t.rewards.toFixed(2)}</td><td class="t ${cls(t.trading)}">${t.trading.toFixed(2)}</td><td class="t">${Math.round(t.exp_usd_day)}</td><td class="t">${t.fills}</td><td class="t ${t.worst_case != null ? cls(t.worst_case) : ''}">${t.worst_case != null ? t.worst_case.toFixed(2) : '—'}</td><td class="t">${h} h ${String(m).padStart(2, '0')}</td></tr>`;
+    return `<tr><td>${PF[k].name}</td><td class="t ${cls(t.net)}">${t.net.toFixed(2)}</td><td class="t">${t.rewards.toFixed(2)}</td><td class="t ${cls(t.trading)}">${t.trading.toFixed(2)}</td><td class="t">${Math.round(t.exp_usd_day)}</td><td class="t">${t.fills}</td><td class="t ${t.worst_case != null ? cls(t.worst_case) : ''}">${t.worst_case != null ? t.worst_case.toFixed(2) : '—'}</td><td class="t">${Math.round(t.capital_quoting).toLocaleString('fr-FR')}</td><td class="t">${h} h ${String(m).padStart(2, '0')}</td></tr>`;
   }).join('');
 }
 async function tickRewards() {

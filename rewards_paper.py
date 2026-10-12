@@ -29,6 +29,8 @@ ap.add_argument("--duration-min", type=float, default=0, help="stop after N minu
 ap.add_argument("--profile", choices=["max", "slow"], default="max",
                 help="max: best rewards anywhere; slow: skip markets whose outcome can be watched live")
 ap.add_argument("--min-days-left", type=float, default=0, help="slow profile: only markets ending at least this far out")
+ap.add_argument("--min-size", action="store_true",
+                help="quote only the minimum size that qualifies for rewards instead of --capital per market")
 ap.add_argument("--pessimistic", action="store_true",
                 help="worst-case accounting: first in queue, run over when the book jumps through our price, "
                      "a competitor matches us at once (share capped at 50%%), stock valued at the price we could sell at")
@@ -210,7 +212,7 @@ class Bot:
             q2 = sum(score((p - mid) * 100, v) * s for p, s in asks if s >= ms_)
             others = q_min(q1, q2, mid)
             d = v * ARGS.placement
-            n_sh = ARGS.capital / max(0.05, (mid - d / 100) + (1 - (mid + d / 100)))
+            n_sh = max(ms_, 5) if ARGS.min_size else ARGS.capital / max(0.05, (mid - d / 100) + (1 - (mid + d / 100)))
             if n_sh < ms_: continue
             mine = score(d, v) * n_sh
             share = mine / (mine + others)
@@ -299,7 +301,7 @@ class Bot:
             best_bid = bids[0][0] if bids else 0.0; best_ask = asks[0][0] if asks else 1.0
             bid = math.floor((mid - d) / p.tick + 1e-9) * p.tick; ask = math.ceil((mid + d) / p.tick - 1e-9) * p.tick
             bid = min(bid, best_ask - p.tick); ask = max(ask, best_bid + p.tick)
-            p.size = round(ARGS.capital / max(0.05, bid + (1 - ask)))
+            p.size = max(p.min_size, 5) if ARGS.min_size else round(ARGS.capital / max(0.05, bid + (1 - ask)))
             p.bid = round(bid, 4) if p.inv() < p.size and bid > 0 else None
             p.ask = round(ask, 4) if -p.inv() < p.size and ask < 1 else None
             p.bid_ahead = 0.0 if ARGS.pessimistic else sum(s for x, s in bids if abs(x - (p.bid or -1)) < 1e-9)
@@ -348,9 +350,10 @@ class Bot:
         st = {"updated": time.time(), "started": self.t0, "samples": self.samples,
               "params": {"k": ARGS.k, "capital": ARGS.capital, "min_rate": ARGS.min_rate, "placement": ARGS.placement,
                          "min_hours_left": ARGS.min_hours_left, "profile": ARGS.profile, "min_days_left": ARGS.min_days_left,
-                         "pessimistic": ARGS.pessimistic},
+                         "pessimistic": ARGS.pessimistic, "min_size": ARGS.min_size},
               "totals": {"rewards": round(rewards, 2), "trading": round(trading, 2), "net": round(net, 2),
-                         "quoting": len(active), "capital_quoting": round(len(active) * ARGS.capital),
+                         "quoting": len(active),
+                         "capital_quoting": round(sum(p.size * ((p.bid or 0) + (1 - (p.ask if p.ask is not None else 1))) for p in active)),
                          "fills": sum(p.fills for p in ps), "markets_total": len(ps),
                          "exp_usd_day": round(sum(p.rate * p.share for p in active), 2), "worst_case": round(worst, 2)},
               "curve": self.curve, "rows": rows[:200], "candidates": self.candidates, "log": self.log,
