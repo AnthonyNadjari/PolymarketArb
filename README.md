@@ -8,6 +8,9 @@ officiel (Gamma API). Une stratégie témoin identique mais qui ne retire jamais
 
 ## Suivi en direct
 
+La page publiée (`dashboard.html`) ne montre que les tests en cours et un résumé des tests terminés. L'ancien tableau de bord complet, avec l'onglet BTC et les six portefeuilles, est gardé dans `dashboard_full.html`.
+
+
 Le bot tourne sur GitHub Actions (workflow `paper-bot.yml`, tranches de 6 h, relancé par cron) et publie son état
 toutes les 5 minutes sur la branche `gh-pages`, servie par GitHub Pages :
 
