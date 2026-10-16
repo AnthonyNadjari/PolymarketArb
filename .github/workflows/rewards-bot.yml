@@ -24,32 +24,30 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -q requests
-      - name: Run the minimum-size bots and publish their state every 5 minutes
-        # The four $1 000-per-market portfolios were stopped on 2026-10-13; their last state stays on gh-pages.
+      - name: Run the filtered bot and publish its state every 5 minutes
+        # Earlier portfolios (four $1 000-per-market, then the two minimum-size ones, stopped 2026-10-16)
+        # keep their last state on gh-pages.
         run: |
           set +e
-          cp live/rewards_max_min_state.json rewards_max_min_state.json 2>/dev/null || true
-          cp live/rewards_slow_min_state.json rewards_slow_min_state.json 2>/dev/null || true
-          python rewards_paper.py --state rewards_max_min_state.json --pessimistic --min-size > bot_max_min.log 2>&1 &
-          BOT5=$!
-          python rewards_paper.py --state rewards_slow_min_state.json --profile slow --min-days-left 3 --min-rate 10 --pessimistic --min-size > bot_slow_min.log 2>&1 &
-          BOT6=$!
+          cp live/rewards_filtered_state.json rewards_filtered_state.json 2>/dev/null || true
+          python rewards_paper.py --state rewards_filtered_state.json --pessimistic --min-size --filtered --max-min-size 50 --min-hours-left 24 > bot_filtered.log 2>&1 &
+          BOT=$!
           git -C live config user.name "rewards-bot"
           git -C live config user.email "rewards-bot@users.noreply.github.com"
           publish() {
             for i in 1 2 3; do
               (cd live && git pull -q --rebase -X theirs || git rebase --abort) 2>/dev/null
-              for f in rewards_max_min_state.json rewards_slow_min_state.json; do [ -f "$f" ] && cp "$f" "live/$f"; done
+              for f in rewards_filtered_state.json; do [ -f "$f" ] && cp "$f" "live/$f"; done
               { echo '<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head><body>'; cat dashboard.html; echo '</body></html>'; } > live/index.html
               (cd live && git add -A && git commit -qm "rewards $(date -u +%FT%TZ)" ; git push -q) && break
               sleep 5
             done
           }
           END=$(( $(date +%s) + 350*60 ))
-          while [ "$(date +%s)" -lt "$END" ] && kill -0 "$BOT5" 2>/dev/null; do
+          while [ "$(date +%s)" -lt "$END" ] && kill -0 "$BOT" 2>/dev/null; do
             sleep 300
             publish
           done
-          kill "$BOT5" "$BOT6" 2>/dev/null; sleep 2
+          kill "$BOT" 2>/dev/null; sleep 2
           publish
-          echo "--- logs"; tail -30 bot_max_min.log bot_slow_min.log
+          echo "--- logs"; tail -30 bot_filtered.log

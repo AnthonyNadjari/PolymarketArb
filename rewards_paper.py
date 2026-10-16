@@ -29,6 +29,9 @@ ap.add_argument("--duration-min", type=float, default=0, help="stop after N minu
 ap.add_argument("--profile", choices=["max", "slow"], default="max",
                 help="max: best rewards anywhere; slow: skip markets whose outcome can be watched live")
 ap.add_argument("--min-days-left", type=float, default=0, help="slow profile: only markets ending at least this far out")
+ap.add_argument("--filtered", action="store_true",
+                help="max profile minus the losers of the first test: no sport, esport, weather or same-day price markets")
+ap.add_argument("--max-min-size", type=float, default=0, help="skip markets whose reward min size is above this (0 = no cap)")
 ap.add_argument("--min-size", action="store_true",
                 help="quote only the minimum size that qualifies for rewards instead of --capital per market")
 ap.add_argument("--pessimistic", action="store_true",
@@ -119,6 +122,19 @@ LIVE_WORDS = ("view", "video", "views", "post ", "posts", "tweet", "temperature"
 LIVE_TAGS = ("sports", "weather", "crypto prices", "esports", "nfl", "nba", "mlb", "nhl", "soccer", "tennis",
              "mentions", "tweet markets", "youtube", "mrbeast", "daily", "hourly", "up or down", "stocks")
 
+# Markets settled by a game, a thermometer or a same-day price: the losers of the first min-size test.
+GAME_WORDS = ("temperature", "precipitation", "rain", "snow", "weather", "kills", "game ", "game:", "lol:", "handicap",
+              "games total", "o/u", "over/under", "touchdown", " vs", "vs.", "spread", "map ", "set ", "match",
+              "points", "goals", "yards", "win on", "up or down", "opens up", "close above", "close below")
+GAME_TAGS = ("sports", "esports", "weather", "crypto prices", "nfl", "nba", "mlb", "nhl", "soccer", "tennis",
+             "up or down", "stocks", "daily", "hourly", "games")
+
+
+def is_game(m):
+    q = (m.get("question") or "").lower()
+    tags = " ".join(m.get("tags") or []).lower()
+    return any(w in q for w in GAME_WORDS) or any(t in tags for t in GAME_TAGS)
+
 
 def is_live(m):
     q = (m.get("question") or "").lower()
@@ -200,6 +216,10 @@ class Bot:
               and (end_ts(m) or now + 1e9) > now + max(ARGS.min_hours_left * 3600, ARGS.min_days_left * 86400)]
         if ARGS.profile == "slow":
             ms = [m for m in ms if not is_live(m)]
+        if ARGS.filtered:
+            ms = [m for m in ms if not is_game(m)]
+        if ARGS.max_min_size:
+            ms = [m for m in ms if m["rewards"].get("min_size", 0) <= ARGS.max_min_size]
         bk = books([t["token_id"] for m in ms for t in m["tokens"]])
         cands = []
         for m in ms:
@@ -350,7 +370,8 @@ class Bot:
         st = {"updated": time.time(), "started": self.t0, "samples": self.samples,
               "params": {"k": ARGS.k, "capital": ARGS.capital, "min_rate": ARGS.min_rate, "placement": ARGS.placement,
                          "min_hours_left": ARGS.min_hours_left, "profile": ARGS.profile, "min_days_left": ARGS.min_days_left,
-                         "pessimistic": ARGS.pessimistic, "min_size": ARGS.min_size},
+                         "pessimistic": ARGS.pessimistic, "min_size": ARGS.min_size,
+                         "filtered": ARGS.filtered, "max_min_size": ARGS.max_min_size},
               "totals": {"rewards": round(rewards, 2), "trading": round(trading, 2), "net": round(net, 2),
                          "quoting": len(active),
                          "capital_quoting": round(sum(p.size * ((p.bid or 0) + (1 - (p.ask if p.ask is not None else 1))) for p in active)),
