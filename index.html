@@ -75,7 +75,7 @@ details p { color: var(--fg2); font-size: 13px; max-width: 72ch; margin: 8px 0 0
   <header>
     <div>
       <h1>Polymarket : test des récompenses de liquidité</h1>
-      <div class="sub">Simulation papier sur données réelles, aucun argent engagé. Scénario pessimiste, taille minimale.</div>
+      <div class="sub">Simulation papier sur données réelles, aucun argent engagé. Scénario pessimiste, taille minimale, marchés filtrés.</div>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <span class="pill"><span class="dot" id="dot"></span><span id="upd">chargement…</span></span>
@@ -85,49 +85,32 @@ details p { color: var(--fg2); font-size: 13px; max-width: 72ch; margin: 8px 0 0
 
   <section class="card verdict" aria-label="Question du test">
     <div>
-      <div class="q">La prime de Polymarket couvre-t-elle les pertes sur les fills, même dans le pire scénario ?</div>
+      <div class="q">Sans les matchs, la météo et les prix du jour, la prime couvre-t-elle les pertes sur les fills ?</div>
       <div class="a" id="answer">…</div>
       <div class="bar" aria-hidden="true"><i id="prog" style="width:0%"></i></div>
-      <div class="barlbl"><span id="progtxt">—</span><span>verdict le 16 octobre</span></div>
+      <div class="barlbl"><span id="progtxt">—</span><span>verdict le 20 octobre</span></div>
     </div>
   </section>
 
-  <div class="pair">
-    <section class="card pf" id="card-maxm">
-      <div class="head"><div class="name"><span class="sw" style="background:var(--a)"></span>Primes max</div><span class="tag">test décisif</span></div>
-      <div class="net" data-k="net">—</div>
-      <div class="kv">
-        <div><div class="k">Récompenses</div><div class="v" data-k="rew">—</div></div>
-        <div><div class="k">Résultat des positions</div><div class="v" data-k="pos">—</div></div>
-        <div><div class="k">Capital engagé</div><div class="v" data-k="cap">—</div></div>
-        <div><div class="k">Fills</div><div class="v" data-k="fills">—</div></div>
-      </div>
-    </section>
-    <section class="card pf" id="card-slowm">
-      <div class="head"><div class="name"><span class="sw" style="background:var(--b)"></span>Marchés lents</div><span class="tag">sans info en direct</span></div>
-      <div class="net" data-k="net">—</div>
-      <div class="kv">
-        <div><div class="k">Récompenses</div><div class="v" data-k="rew">—</div></div>
-        <div><div class="k">Résultat des positions</div><div class="v" data-k="pos">—</div></div>
-        <div><div class="k">Capital engagé</div><div class="v" data-k="cap">—</div></div>
-        <div><div class="k">Fills</div><div class="v" data-k="fills">—</div></div>
-      </div>
-    </section>
-  </div>
+  <section class="card pf" id="card-filt">
+    <div class="head"><div class="name"><span class="sw" style="background:var(--a)"></span>Primes max filtré</div><span class="tag">test décisif</span></div>
+    <div class="net" data-k="net">—</div>
+    <div class="kv">
+      <div><div class="k">Récompenses</div><div class="v" data-k="rew">—</div></div>
+      <div><div class="k">Résultat des positions</div><div class="v" data-k="pos">—</div></div>
+      <div><div class="k">Capital engagé</div><div class="v" data-k="cap">—</div></div>
+      <div><div class="k">Fills</div><div class="v" data-k="fills">—</div></div>
+    </div>
+  </section>
 
   <section class="card">
     <h2>Argent net au fil du temps</h2>
-    <div class="legend"><span><i style="background:var(--a)"></i>Primes max</span><span><i style="background:var(--b)"></i>Marchés lents</span></div>
-    <svg class="chart" id="chart" viewBox="0 0 800 220" preserveAspectRatio="none" role="img" aria-label="Argent net des deux tests"></svg>
+        <svg class="chart" id="chart" viewBox="0 0 800 220" preserveAspectRatio="none" role="img" aria-label="Argent net du test"></svg>
   </section>
 
   <section class="card">
     <div class="row">
       <h2>Marchés cotés</h2>
-      <div class="seg" role="group" aria-label="Portefeuille">
-        <button type="button" id="seg-maxm" aria-pressed="true">Primes max</button>
-        <button type="button" id="seg-slowm" aria-pressed="false">Marchés lents</button>
-      </div>
     </div>
     <div class="scroll"><table>
       <thead><tr><th>Marché</th><th class="t">Prime $/j</th><th class="t">Notre part</th><th class="t">Récomp. $</th><th class="t">Positions $</th><th class="t">Net $</th></tr></thead>
@@ -148,6 +131,7 @@ details p { color: var(--fg2); font-size: 13px; max-width: 72ch; margin: 8px 0 0
     <details>
       <summary>Comment lire ces chiffres</summary>
       <p>Polymarket paie chaque jour les participants qui affichent des prix d'achat et de vente près du prix du marché. Le bot simule ce rôle sur 15 marchés, avec le minimum de jetons exigé pour toucher la prime.</p>
+      <p>Filtre : pas de sport, d'e-sport, de météo ni de prix du jour (ces marchés ont coûté ~$2 250 au premier test), seulement les marchés qui exigent 50 jetons ou moins et qui finissent dans plus de 24 h.</p>
       <p>Récompenses : la part de prime qu'il toucherait, estimée chaque minute avec la formule officielle et le vrai carnet d'ordres. Résultat des positions : ce que lui coûtent les gens qui achètent ou vendent sur ses prix au mauvais moment, valorisé au prix de revente.</p>
       <p>Scénario pessimiste : un concurrent prend la moitié de la prime, chaque saut de prix par-dessus nos ordres nous remplit en entier, et on passe en tête de file. Si le net reste positif dans ces conditions, il y a probablement un vrai edge.</p>
       <p>Ce sont des données de marché réelles, mais les ordres sont simulés. Les chiffres sont une estimation, pas un résultat garanti.</p>
@@ -158,18 +142,19 @@ details p { color: var(--fg2); font-size: 13px; max-width: 72ch; margin: 8px 0 0
 <script>
 const $ = id => document.getElementById(id);
 const BASE = '';
-const LIVE = { maxm: 'rewards_max_min_state.json', slowm: 'rewards_slow_min_state.json' };
-const COLORS = { maxm: 'var(--a)', slowm: 'var(--b)' };
-const START = Date.UTC(2026, 9, 12, 21, 0) / 1000, END = Date.UTC(2026, 9, 15, 21, 0) / 1000;
+const LIVE = { filt: 'rewards_filtered_state.json' };
+const COLORS = { filt: 'var(--a)' };
+const START = Date.UTC(2026, 9, 16, 17, 0) / 1000, END = Date.UTC(2026, 9, 20, 17, 0) / 1000;
 const ARCHIVE = [
   { name: 'BTC 5 min : maker avec 1 s de retard', file: 'state.json', get: s => s.slow.pnl_net, note: 'Les bots rapides prennent la différence. Pas d’edge.' },
   { name: 'Récompenses, primes max, $1 000 par marché', file: 'rewards_state.json', get: s => s.totals.net, note: 'Positif, mais hypothèses favorables.' },
   { name: 'Récompenses, marchés lents, $1 000 par marché', file: 'rewards_slow_state.json', get: s => s.totals.net, note: 'Positif, mais hypothèses favorables.' },
   { name: 'Primes max, $1 000, pessimiste', file: 'rewards_max_pess_state.json', get: s => s.totals.net, note: 'Chaque nouvelle coûte des milliers. Trop risqué.' },
   { name: 'Marchés lents, $1 000, pessimiste', file: 'rewards_slow_pess_state.json', get: s => s.totals.net, note: 'Même constat.' },
+  { name: 'Primes max, taille min., pessimiste (3 j)', file: 'rewards_max_min_state.json', get: s => s.totals.net, note: 'Prime ~$850/j, mais e-sport et météo mangent tout.' },
+  { name: 'Marchés lents, taille min., pessimiste (3 j)', file: 'rewards_slow_min_state.json', get: s => s.totals.net, note: 'Proche de zéro : du bruit.' },
 ];
-const data = {}; let sel = 'maxm';
-try { const v = localStorage.getItem('pm-sel'); if (v in LIVE) sel = v; } catch (e) {}
+const data = {}; const sel = 'filt';
 
 const usd = (x, d = 2) => (x >= 0 ? '+' : '−') + '$' + Math.abs(x).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
 const cls = x => x > 0.005 ? 'pos' : x < -0.005 ? 'neg' : '';
@@ -190,13 +175,13 @@ function renderCard(k) {
 }
 
 function renderVerdict() {
-  const s = data.maxm; if (!s) return;
+  const s = data.filt; if (!s) return;
   const net = s.totals.net;
   $('answer').innerHTML = net > 0 ? `Pour l'instant oui : <span class="pos">${usd(net)}</span>` : `Pour l'instant non : <span class="neg">${usd(net)}</span>`;
   const now = Date.now() / 1000, p = Math.min(1, Math.max(0, (now - START) / (END - START)));
   $('prog').style.width = (100 * p).toFixed(1) + '%';
   const h = Math.max(0, Math.round((now - START) / 3600));
-  $('progtxt').textContent = `${h} h écoulées sur 72`;
+  $('progtxt').textContent = `${h} h écoulées sur 96`;
 }
 
 function renderChart() {
@@ -221,7 +206,6 @@ function renderChart() {
 }
 
 function renderRows() {
-  ['maxm', 'slowm'].forEach(k => $('seg-' + k).setAttribute('aria-pressed', k === sel ? 'true' : 'false'));
   const rows = (data[sel]?.rows || []).filter(r => r.active || r.rewards > 0.5 || Math.abs(r.trading) > 0.5).slice(0, 25);
   $('rowsempty').hidden = rows.length > 0;
   $('rows').innerHTML = rows.map(r => `<tr><td class="q"><a href="https://polymarket.com/market/${esc(r.slug)}" target="_blank" rel="noopener">${esc(r.q)}</a>${r.active ? '' : ' <span class="tag">plus coté</span>'}</td><td class="t">${Math.round(r.rate)}</td><td class="t">${Math.round(100 * (r.avg_share || r.share))} %</td><td class="t">${r.rewards.toFixed(2)}</td><td class="t ${cls(r.trading)}">${r.trading.toFixed(2)}</td><td class="t ${cls(r.net)}">${r.net.toFixed(2)}</td></tr>`).join('');
@@ -240,7 +224,6 @@ async function tick() {
   $('upd').textContent = u ? (stale ? 'bot arrêté · ' : '') + 'maj ' + hhmm(u) + ' UTC' : 'pas de données';
   Object.keys(LIVE).forEach(renderCard); renderVerdict(); renderChart(); renderRows();
 }
-['maxm', 'slowm'].forEach(k => $('seg-' + k).addEventListener('click', () => { sel = k; try { localStorage.setItem('pm-sel', k); } catch (e) {} renderRows(); }));
 $('reload').addEventListener('click', async () => { $('reload').textContent = 'Chargement…'; await tick(); $('reload').textContent = 'Recharger'; });
 tick(); loadArchive(); setInterval(tick, 30000);
 </script>
