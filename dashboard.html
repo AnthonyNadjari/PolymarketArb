@@ -87,7 +87,7 @@ details p { color: var(--fg2); font-size: 13px; max-width: 72ch; margin: 8px 0 0
       <div class="q">Sans les matchs, la météo et les prix du jour, la prime couvre-t-elle les pertes sur les fills ?</div>
       <div class="a" id="answer">…</div>
       <div class="bar" aria-hidden="true"><i id="prog" style="width:0%"></i></div>
-      <div class="barlbl"><span id="progtxt">—</span><span>verdict le 22 octobre</span></div>
+      <div class="barlbl"><span id="progtxt">—</span><span>projet arrêté le 18 octobre</span></div>
     </div>
   </section>
 
@@ -152,6 +152,7 @@ const ARCHIVE = [
   { name: 'Marchés lents, $1 000, pessimiste', file: 'rewards_slow_pess_state.json', get: s => s.totals.net, note: 'Même constat.' },
   { name: 'Primes max, taille min., pessimiste (3 j)', file: 'rewards_max_min_state.json', get: s => s.totals.net, note: 'Prime ~$850/j, mais e-sport et météo mangent tout.' },
   { name: 'Marchés lents, taille min., pessimiste (3 j)', file: 'rewards_slow_min_state.json', get: s => s.totals.net, note: 'Proche de zéro : du bruit.' },
+  { name: 'Primes max filtré, pessimiste (2 j)', file: 'rewards_filtered_state.json', get: s => s.totals.net, note: 'Une actualité en France (couvre-feu) a tout effacé. Pas d’edge.' },
 ];
 const data = {}; const sel = 'filt';
 
@@ -176,11 +177,11 @@ function renderCard(k) {
 function renderVerdict() {
   const s = data.filt; if (!s) return;
   const net = s.totals.net;
-  $('answer').innerHTML = net > 0 ? `Pour l'instant oui : <span class="pos">${usd(net)}</span>` : `Pour l'instant non : <span class="neg">${usd(net)}</span>`;
+  $('answer').innerHTML = `Non : <span class="neg">${usd(net)}</span> au moment de l'arrêt. Pas d'edge trouvé.`; if (0) $('answer').innerHTML = net > 0 ? `Pour l'instant oui : <span class="pos">${usd(net)}</span>` : `Pour l'instant non : <span class="neg">${usd(net)}</span>`;
   const now = Date.now() / 1000, p = Math.min(1, Math.max(0, (now - START) / (END - START)));
   $('prog').style.width = (100 * p).toFixed(1) + '%';
   const h = Math.max(0, Math.round((now - START) / 3600));
-  $('progtxt').textContent = `${h} h écoulées sur 144`;
+  $('progtxt').textContent = 'Test arrêté après 49 h';
 }
 
 function renderChart() {

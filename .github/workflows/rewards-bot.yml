@@ -1,9 +1,8 @@
 # Runs the liquidity-rewards paper bot on a GitHub-hosted runner, 6 hours at a time, and publishes
 # rewards_state.json + the dashboard to the gh-pages branch every 5 minutes.
 name: rewards-bot
+# Project stopped on 2026-10-18 (no edge found); run manually only.
 on:
-  schedule:
-    - cron: "3 */6 * * *"
   workflow_dispatch:
 permissions:
   contents: write
